@@ -238,16 +238,18 @@ export class NoteHead extends Note {
     }
     
     // Embed the `midiPitch` as a custom attribute there (required for matching purposes)
-    this.setAttribute(
-      'el',
-      this.context.openGroup(
-        'notehead',
-        this.getAttribute('id'),
-        {
-          midiPitch: this.midi_pitch
-        }
-      )
-    );
+    if (this.midi_pitch != null) {
+      this.setAttribute(
+        'el',
+        this.context.openGroup(
+          'notehead',
+          this.getAttribute('id'),
+          {
+            midiPitch: this.midi_pitch
+          }
+        )
+      );
+    }
 
     if (this.note_type === 's') {
       const staveSpace = this.stave.getSpacingBetweenLines();
