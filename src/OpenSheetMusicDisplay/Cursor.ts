@@ -13,13 +13,11 @@ import { SourceMeasure } from "../MusicalScore/VoiceData/SourceMeasure";
 import { StaffLine } from "../MusicalScore/Graphical/StaffLine";
 import { GraphicalMeasure } from "../MusicalScore/Graphical/GraphicalMeasure";
 import { VexFlowMeasure } from "../MusicalScore/Graphical/VexFlow/VexFlowMeasure";
-import { CursorOptions } from "./OSMDOptions";
+import { CursorOptions, CursorType } from "./OSMDOptions";
 import { BoundingBox } from "../MusicalScore/Graphical/BoundingBox";
 import { GraphicalNote } from "../MusicalScore/Graphical/GraphicalNote";
 
-/**
- * A cursor which can iterate through the music sheet.
- */
+/** A cursor which can iterate through the music sheet. */
 export class Cursor {
   constructor(container: HTMLElement, openSheetMusicDisplay: OpenSheetMusicDisplay, cursorOptions: CursorOptions) {
     this.container = container;
@@ -80,6 +78,7 @@ export class Cursor {
   public hidden: boolean = true;
   public currentPageNumber: number = 1;
   private cursorOptions: CursorOptions;
+  private cursorOptionsRendered: CursorOptions;
   private skipInvisibleNotes: boolean = true;
 
   /** Initialize the cursor. Necessary before using functions like show() and next(). */
@@ -91,9 +90,7 @@ export class Cursor {
     this.hide();
   }
 
-  /**
-   * Make the cursor visible
-   */
+  /** Make the cursor visible. */
   public show(): void {
     this.hidden = false;
     //this.resetIterator(); // TODO maybe not here? though setting measure range to draw, rerendering, then handling cursor show is difficult
@@ -133,6 +130,7 @@ export class Cursor {
     return <VexFlowStaffEntry>this.graphic.findGraphicalStaffEntryFromMeasureList(staffIndex, measureIndex, voiceEntry.ParentSourceStaffEntry);
   }
 
+  /** Moves the cursor to the current position of the iterator (visually), e.g. after next(). */
   public update(): void {
     if (this.hidden || this.hidden === undefined || this.hidden === null) {
       return;
@@ -201,7 +199,7 @@ export class Cursor {
       //   }
       // }
     }
-    if (!musicSystem) {
+    if (!musicSystem?.StaffLines[0]) {
       return;
     }
 
@@ -249,25 +247,25 @@ export class Cursor {
     const cursorElement: HTMLImageElement = this.cursorElement;
     let newWidth: number = 0;
     switch (this.cursorOptions.type) {
-      case 1:
+      case CursorType.ThinLeft:
         cursorElement.style.top = (y * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
         cursorElement.style.left = ((x - 1.5) * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
         cursorElement.height = (height * 10.0 * this.openSheetMusicDisplay.zoom);
         newWidth = 5 * this.openSheetMusicDisplay.zoom;
         break;
-      case 2:
+      case CursorType.ShortThinTopLeft:
         cursorElement.style.top = ((y-2.5) * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
         cursorElement.style.left = (x * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
         cursorElement.height = (1.5 * 10.0 * this.openSheetMusicDisplay.zoom);
         newWidth = 5 * this.openSheetMusicDisplay.zoom;
         break;
-      case 3:
+      case CursorType.CurrentArea:
         cursorElement.style.top = measurePositionAndShape.AbsolutePosition.y * 10.0 * this.openSheetMusicDisplay.zoom +"px";
         cursorElement.style.left = measurePositionAndShape.AbsolutePosition.x * 10.0 * this.openSheetMusicDisplay.zoom +"px";
         cursorElement.height = (height * 10.0 * this.openSheetMusicDisplay.zoom);
         newWidth = measurePositionAndShape.Size.width * 10 * this.openSheetMusicDisplay.zoom;
         break;
-      case 4:
+      case CursorType.CurrentAreaLeft:
         cursorElement.style.top = measurePositionAndShape.AbsolutePosition.y * 10.0 * this.openSheetMusicDisplay.zoom +"px";
         cursorElement.style.left = measurePositionAndShape.AbsolutePosition.x * 10.0 * this.openSheetMusicDisplay.zoom +"px";
         cursorElement.height = (height * 10.0 * this.openSheetMusicDisplay.zoom);
@@ -281,15 +279,16 @@ export class Cursor {
         break;
     }
 
-    if (newWidth !== cursorElement.width) {
-      cursorElement.width = newWidth;
+    // if (newWidth !== cursorElement.width) { // this `if` is unnecessary and prevents updating color
+    cursorElement.width = newWidth;
+    if (this.cursorOptionsRendered !== this.cursorOptions) {
       this.updateStyle(newWidth, this.cursorOptions);
+      // only update style (creating new cursor element) if options changed.
+      //   For width, it seems to be enough to update cursorElement.width, see osmd#1519
     }
   }
 
-  /**
-   * Hide the cursor
-   */
+  /** Hide the cursor. */
   public hide(): void {
     // Hide the actual cursor element
     this.cursorElement.style.display = "none";
@@ -301,31 +300,26 @@ export class Cursor {
     this.hidden = true;
   }
 
-  /**
-   * Go to previous entry
-   */
+  /** Go to previous entry / note / vertical position. */
    public previous(): void {
     this.iterator.moveToPreviousVisibleVoiceEntry(false);
     this.update();
   }
 
-  /**
-   * Go to next entry
-   */
+  /** Go to next entry / note / vertical position. */
   public next(): void {
     this.iterator.moveToNextVisibleVoiceEntry(false); // moveToNext() would not skip notes in hidden (visible = false) parts
     this.update();
   }
 
-  /**
-   * reset cursor to start
-   */
+  /** reset cursor to start position (start of sheet or osmd.Sheet.SelectionStart if set). */
   public reset(): void {
     this.resetIterator();
     //this.iterator.moveToNext();
     this.update();
   }
 
+  /** updates cursor style (visually), e.g. cursor.cursorOptions.type or .color. */
   private updateStyle(width: number, cursorOptions: CursorOptions = undefined): void {
     if (cursorOptions !== undefined) {
       this.cursorOptions = cursorOptions;
@@ -340,10 +334,10 @@ export class Cursor {
     // Generate the gradient
     const gradient: CanvasGradient = ctx.createLinearGradient(0, 0, this.cursorElement.width, 0);
     switch (this.cursorOptions.type) {
-      case 1:
-      case 2:
-      case 3:
-      case 4:
+      case CursorType.ThinLeft:
+      case CursorType.ShortThinTopLeft:
+      case CursorType.CurrentArea:
+      case CursorType.CurrentAreaLeft:
         gradient.addColorStop(1, this.cursorOptions.color);
         break;
       default:
@@ -355,6 +349,7 @@ export class Cursor {
     }
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, 1);
+    this.cursorOptionsRendered = {...this.cursorOptions}; // clone, otherwise !== doesn't work
     // Set the actual image
     this.cursorElement.src = c.toDataURL("image/png");
   }
@@ -433,5 +428,14 @@ export class Cursor {
 
   public set CursorOptions(value: CursorOptions) {
     this.cursorOptions = value;
+  }
+
+  /** Hides and removes the cursor element, deletes object variables. */
+  public Dispose(): void {
+    this.hide();
+    this.container.removeChild(this.cursorElement);
+    this.rules = undefined;
+    this.openSheetMusicDisplay = undefined;
+    this.cursorOptions = undefined;
   }
 }

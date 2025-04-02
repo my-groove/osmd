@@ -25,6 +25,7 @@ export class ExpressionReader {
     private placement: PlacementEnum;
     private soundTempo: number;
     private soundDynamic: number;
+    private divisions: number;
     private offsetDivisions: number;
     private staffNumber: number;
     private globalStaffIndex: number;
@@ -50,6 +51,7 @@ export class ExpressionReader {
                                     currentMeasureIndex: number,
                                     ignoreDivisionsOffset: boolean): void {
         this.initialize();
+        this.divisions = divisions;
         const offsetNode: IXmlElement = xmlNode.element("offset");
         if (offsetNode !== undefined && !ignoreDivisionsOffset) {
             try {
@@ -160,6 +162,16 @@ export class ExpressionReader {
                 inSourceMeasureCurrentFraction: Fraction, inSourceMeasurePreviousFraction: Fraction = undefined): void {
         let isTempoInstruction: boolean = false;
         let isDynamicInstruction: boolean = false;
+
+        const timestampFraction: Fraction = inSourceMeasureCurrentFraction.clone();
+        const offsetNode: IXmlElement = directionNode.element("offset");
+        if (offsetNode?.value) {
+          const offsetValue: number = Number.parseInt(offsetNode.value, 10);
+          timestampFraction.Add(new Fraction(offsetValue, 4 * this.divisions));
+        }
+        // this.directionTimestamp = timestampFraction.clone();
+        //   this could be correct, but leads to odd differences with Musescore for elements like dim. and wedges.
+
         const n: IXmlElement = directionNode.element("sound");
         if (n) {
             const tempoAttr: IXmlAttribute = n.attribute("tempo");
@@ -201,7 +213,7 @@ export class ExpressionReader {
             if (beatUnit !== undefined && bpm) {
                 const useCurrentFractionForPositioning: boolean = (dirContentNode.hasAttributes && dirContentNode.attribute("default-x") !== undefined);
                 if (useCurrentFractionForPositioning) {
-                    this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
+                    this.directionTimestamp = Fraction.createFromFraction(timestampFraction);
                 }
                 const bpmNumber: number = parseFloat(bpm.value);
                 this.createNewTempoExpressionIfNeeded(currentMeasure);
@@ -231,7 +243,7 @@ export class ExpressionReader {
         dirContentNode = dirNode.element("dynamics");
         if (dirContentNode) {
             const fromNotation: boolean = directionNode.element("notations") !== undefined;
-            this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, inSourceMeasureCurrentFraction, fromNotation);
+            this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, timestampFraction, fromNotation);
             return;
         }
 
@@ -244,14 +256,14 @@ export class ExpressionReader {
                     new InstantaneousTempoExpression(dirContentNode.value, this.placement, this.staffNumber, this.soundTempo, this.currentMultiTempoExpression);
                 this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
             } else if (!isDynamicInstruction) {
-                this.interpretWords(dirContentNode, currentMeasure, inSourceMeasureCurrentFraction);
+                this.interpretWords(dirContentNode, currentMeasure, timestampFraction);
             }
             return;
         }
 
         dirContentNode = dirNode.element("wedge");
         if (dirContentNode) {
-            this.interpretWedge(dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber);
+            this.interpretWedge(directionNode, dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber);
             return;
         }
 
@@ -578,7 +590,8 @@ export class ExpressionReader {
         }
         return numberXml;
     }
-    private interpretWedge(wedgeNode: IXmlElement, currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
+    private interpretWedge(directionNode: IXmlElement, wedgeNode: IXmlElement,
+        currentMeasure: SourceMeasure, inSourceMeasureCurrentFraction: Fraction, currentMeasureIndex: number): void {
         if (wedgeNode !== undefined && wedgeNode.hasAttributes && wedgeNode.attribute("default-x")) {
             this.directionTimestamp = Fraction.createFromFraction(inSourceMeasureCurrentFraction);
         }
@@ -603,6 +616,7 @@ export class ExpressionReader {
         //If current is used, when there is a system break it will mess up
         if (typeAttributeString === "stop") {
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml, inSourceMeasureCurrentFraction);
+            this.getMultiExpression.EndOffsetFraction = new Fraction(this.offsetDivisions, this.divisions * 4);
         } else {
             this.createNewMultiExpressionIfNeeded(currentMeasure, wedgeNumberXml);
         }
@@ -625,8 +639,9 @@ export class ExpressionReader {
             existingMultiExpression &&
             (existingMultiExpression.SourceMeasureParent !== currentMeasure ||
                 existingMultiExpression.numberXml !== numberXml ||
-                (existingMultiExpression.SourceMeasureParent === currentMeasure && existingMultiExpression.Timestamp !== timestamp))) {
+                (existingMultiExpression.SourceMeasureParent === currentMeasure && !existingMultiExpression.Timestamp.Equals(timestamp)))) {
                     this.getMultiExpression = existingMultiExpression = new MultiExpression(currentMeasure, Fraction.createFromFraction(timestamp));
+                    this.getMultiExpression.numberXml = numberXml;
             currentMeasure.StaffLinkedExpressions[this.globalStaffIndex].push(existingMultiExpression);
         }
         return existingMultiExpression;
@@ -814,7 +829,7 @@ export class ExpressionReader {
         }
 
         // create unknown:
-        const unknownMultiExpression: MultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, -1);
+        const unknownMultiExpression: MultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, -1, inSourceMeasureCurrentFraction);
         // check here first if there might be a tempo expression doublette:
         if (currentMeasure.TempoExpressions.length > 0) {
             for (let idx: number = 0, len: number = currentMeasure.TempoExpressions.length; idx < len; ++idx) {

@@ -76,6 +76,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         // HTML Elements in the page
         divControls,
         zoomControls,
+        zoomControlsButtons,
         header,
         err,
         error_tr,
@@ -100,6 +101,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         debugClearBtn,
         selectPageSizes,
         printPdfBtns,
+        darkModeBtn,
         transpose,
         transposeBtn,
         versionDiv;
@@ -144,6 +146,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         var paramShowHeader = findGetParameter('showHeader');
         var paramZoom = findGetParameter('zoom');
         var paramOverflow = findGetParameter('overflow');
+        var paramDarkMode = findGetParameter('darkMode');
         var paramOpenUrl = findGetParameter('openUrl');
         var paramDebugControls = findGetParameter('debugControls');
 
@@ -217,6 +220,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         error_tr = document.getElementById("error-tr");
         zoomDivs = [];
         zoomDivs.push(document.getElementById("zoom-str"));
+        zoomDivs.push(document.getElementById("zoom-str-portrait"));
         zoomDivs.push(document.getElementById("zoom-str-optional"));
         custom = document.createElement("option");
         selectSample = document.getElementById("selectSample");
@@ -233,7 +237,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         if (horizontalScrolling) {
             canvas.style.overflowX = 'auto'; // enable horizontal scrolling
         }
-        //canvas.id = 'osmdCanvasDiv';
+        canvas.id = 'osmdCanvasDiv';
         //canvas.style.overflowX = 'auto'; // enable horizontal scrolling
         previousCursorBtn = document.getElementById("previous-cursor-btn");
         nextCursorBtn = document.getElementById("next-cursor-btn");
@@ -251,9 +255,11 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         printPdfBtns = [];
         printPdfBtns.push(document.getElementById("print-pdf-btn"));
         printPdfBtns.push(document.getElementById("print-pdf-btn-optional"));
+        darkModeBtn = document.getElementById("dark-mode-btn");
         transpose = document.getElementById('transpose');
         transposeBtn = document.getElementById('transpose-btn');
         versionDiv = document.getElementById('versionDiv');
+        zoomControlsButtons = document.getElementById('zoomControlsButtons')
 
         //var defaultDisplayVisibleValue = "block"; // TODO in some browsers flow could be the better/default value
         var defaultVisibilityValue = "visible";
@@ -264,15 +270,87 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
             ];
             for (var i=0; i<elementsToEnable.length; i++) {
                 if (elementsToEnable[i]) { // make sure this element is not null/exists in the index.html, e.g. github.io demo has different index.html
-                    if (elementsToEnable[i].style) {
-                        elementsToEnable[i].style.visibility = defaultVisibilityValue;
-                        elementsToEnable[i].style.opacity = 1.0;
+                    const elementToEnable = elementsToEnable[i];
+                    if (elementToEnable.style) {
+                        elementToEnable.style.visibility = defaultVisibilityValue;
+                        if (elementToEnable.style.opacity === 0) {
+                            elementToEnable.style.opacity = 1.0;
+                        }
                     }
                 }
             }
         } else {
             if (divControls) {
                 divControls.style.display = "none";
+            }
+        }
+        // detect mobile portrait mode (small screen -> reduce zoom etc)
+        const portrait = window.matchMedia("(orientation: portrait)").matches;
+        // console.log(`is portrait mode: ${portrait}`);
+        if (window.outerWidth < 768) {
+            zoom = 0.60; // ~60% is good for iPhone SE (browser simulated device dimensions)
+
+            // collapsible behavior
+            var coll = document.getElementsByClassName("portraitCollapsible");
+            for (var i = 0; i < coll.length; i++) {
+                var content = coll[i].nextElementSibling;
+                content.style.display = "none";
+
+            coll[i].addEventListener("click", function() {
+                this.classList.toggle("active");
+                var content = this.nextElementSibling;
+                if (content.style.display === "block") {
+                    content.style.display = "none";
+                } else {
+                    content.style.display = "block";
+                }
+            });
+            }
+            var adSetBtn = document.getElementById("advanced-settings-btn");
+            
+            var advSettings = document.getElementsByClassName("advanced-setting");
+            for(var i = 0; i < advSettings.length; i++){
+                var element = advSettings[i];
+                element.style.display = "none";
+            }
+
+            if (adSetBtn) {
+                adSetBtn.addEventListener("click", function() {
+                    this.classList.toggle("active");
+                    for(var i = 0; i < advSettings.length; i++){
+                        var element = advSettings[i];
+                        if (element.style.display === "block") {
+                            element.style.display = "none";
+                        } else {
+                            element.style.display = "block";
+                        }
+                    }
+                }); 
+            }
+        }
+
+        var slideButton = document.getElementById("slideControlsButton");
+        if (slideButton) {
+            slideButton.onclick=function slideButtonClicked(){
+                var slideContainer = document.getElementById("slideContainer");
+                slideContainer.addEventListener("animationend", function(e){
+                    e.preventDefault();
+    
+                    if(slideContainer.style.animationName == "slide-left"){
+                        divControls.style.display = "block";
+                    }
+                });
+    
+                if(divControls.style.display == "block"){
+                    divControls.style.display = "flex";
+                    slideContainer.style.animation = "0.7s slide-right";
+                    slideContainer.style.animationFillMode = "forwards"
+                    slideButton.style.background = "url('resources/arrow-left-s-line.svg') 50% no-repeat var(--theme-color-light)"
+                    return;
+                }
+                slideContainer.style.animation = "0.7s slide-left"
+                slideContainer.style.animationFillMode = "forwards"
+                slideButton.style.background = "url('resources/arrow-right-s-line.svg') 50% no-repeat var(--theme-color-light)"
             }
         }
 
@@ -374,7 +452,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
                 selectPageSize.onchange = function (evt) {
                     var value = evt.target.value;
                     openSheetMusicDisplay.setPageFormat(value);
-                    openSheetMusicDisplay.render();
+                    renderAndScrollBack();
                 };
             }
         }
@@ -384,6 +462,15 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
                 printPdfBtn.onclick = function () {
                     createPdf();
                 }
+            }
+        }
+
+        if (darkModeBtn) {
+            darkModeBtn.onclick = function() {
+                osmd.setOptions({
+                    darkMode: !osmd.EngravingRules.DarkModeEnabled // toggle to opposite of current value (on/off)
+                });
+                renderAndScrollBack();
             }
         }
 
@@ -412,14 +499,14 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         if (skylineDebug) {
             skylineDebug.onclick = function () {
                 openSheetMusicDisplay.DrawSkyLine = !openSheetMusicDisplay.DrawSkyLine;
-                openSheetMusicDisplay.render();
+                renderAndScrollBack();
             }
         }
 
         if (bottomlineDebug) {
             bottomlineDebug.onclick = function () {
                 openSheetMusicDisplay.DrawBottomLine = !openSheetMusicDisplay.DrawBottomLine;
-                openSheetMusicDisplay.render();
+                renderAndScrollBack();
             }
         }
 
@@ -479,6 +566,14 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
             // tripletsBracketed: true,
             // tupletsRatioed: true, // unconventional; renders ratios for tuplets (3:2 instead of 3 for triplets)
         });
+        if (portrait) {
+            // reduce title labels/text size etc. as well. E.g. for Mozart string quartet, title wouldn't fit line width otherwise
+            openSheetMusicDisplay.EngravingRules.SheetTitleHeight *= 0.7; // see Mozart String Quartet
+            // reducing size for subtitle/composer/lyricist is probably unnecessary and makes them too small:
+            // openSheetMusicDisplay.EngravingRules.SheetSubtitleHeight *= 0.9;
+            // openSheetMusicDisplay.EngravingRules.SheetComposerHeight *= 0.9;
+            // openSheetMusicDisplay.EngravingRules.SheetAuthorHeight *= 0.9; // affects lyricist label, maybe should be renamed
+        }
         openSheetMusicDisplay.TransposeCalculator = new TransposeCalculator(); // necessary for using osmd.Sheet.Transpose and osmd.Sheet.Instruments[i].Transpose
         //openSheetMusicDisplay.DrawSkyLine = true;
         //openSheetMusicDisplay.DrawBottomLine = true;
@@ -556,6 +651,9 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
             }
         }
 
+        if (paramDarkMode) {
+            openSheetMusicDisplay.setOptions({darkMode: true});
+        }
         // TODO after selectSampleOnChange, the resize handler triggers immediately,
         //   so we render twice at the start of the demo.
         //   maybe delay the first osmd render, e.g. when window ready?
@@ -574,6 +672,23 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
             }
             selectSampleOnChange();
         }
+    }
+
+    /** Re-render and scroll back to previous scroll bar y position in percent.
+     * If the document keeps the same height/length, the scroll bar position will basically be unchanged.
+     * If you just call render() instead of renderAndScrollBack(),
+     *   it will scroll you back to the top of the page, even if you were scrolled to the bottom before. */
+    function renderAndScrollBack() {
+        const previousScrollY = window.scrollY;
+        const previousScrollHeight = document.body.scrollHeight; // height of page
+        const previousScrollYPercent = previousScrollY / previousScrollHeight;
+        openSheetMusicDisplay.render();
+        const newScrollHeight = document.body.scrollHeight; // height of page
+        const newScrollY = newScrollHeight * previousScrollYPercent;
+        window.scrollTo({
+            top: newScrollY,
+            behavior: 'instant' // visually, there is no change in the scroll bar position, as it's the same as before.
+        })
     }
 
     function findGetParameter(parameterName) {
@@ -646,7 +761,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
                 window.osmd = openSheetMusicDisplay;
                 openSheetMusicDisplay.zoom = zoom;
                 //openSheetMusicDisplay.Sheet.Transpose = 3; // try transposing between load and first render if you have transpose issues with F# etc
-                return openSheetMusicDisplay.render();
+                renderAndScrollBack();
             },
             function (e) {
                 errorLoadingOrRenderingSheet(e, "rendering");
@@ -783,7 +898,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         disable();
         window.setTimeout(function () {
             openSheetMusicDisplay.Zoom = zoom;
-            openSheetMusicDisplay.render();
+            renderAndScrollBack();
             enable();
         }, 0);
     }
@@ -792,7 +907,7 @@ import { TransposeCalculator } from '../src/Plugins/Transpose/TransposeCalculato
         disable();
         window.setTimeout(function () {
             if (openSheetMusicDisplay.IsReadyToRender()) {
-                openSheetMusicDisplay.render();
+                renderAndScrollBack();
             } else {
                 console.log("[OSMD demo] Loses context!"); // TODO not sure that this message is reasonable, renders fine anyways. maybe vexflow context lost?
                 selectSampleOnChange(); // reload sample e.g. after osmd.clear()

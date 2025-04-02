@@ -57,7 +57,7 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         return this.completeNumberOfStaves;
     }
 
-    private static doCalculationsAfterDurationHasBeenSet(instrumentReaders: InstrumentReader[]): void {
+    public static doCalculationsAfterDurationHasBeenSet(instrumentReaders: InstrumentReader[]): void {
         for (const instrumentReader of instrumentReaders) {
             instrumentReader.doCalculationsAfterDurationHasBeenSet();
         }
@@ -127,6 +127,16 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
         this.musicSheet = new MusicSheet();
         this.musicSheet.Path = path;
         this.musicSheet.Rules = this.rules;
+        const globalWidthAttr: IXmlAttribute = root.attribute("osmdMeasureWidthFactor");
+        // custom xml attribute, similar to osmdWidthFactor for individual measures
+        if (globalWidthAttr) {
+            const globalWidthValue: number = Number.parseFloat(globalWidthAttr.value);
+            if (typeof globalWidthValue === "number" && !isNaN(globalWidthValue)) {
+                this.musicSheet.MeasureWidthFactor = globalWidthValue;
+            } else {
+                log.info("xml parse: osmdMeasureWidthFactor invalid");
+            }
+        }
         if (!root) {
             throw new MusicSheetReadingException("Undefined root element");
         }
@@ -174,7 +184,8 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
                 this.checkIfRhythmInstructionsAreSetAndEqual(instrumentReaders);
                 this.checkSourceMeasureForNullEntries();
                 sourceMeasureCounter = this.setSourceMeasureDuration(instrumentReaders, sourceMeasureCounter);
-                MusicSheetReader.doCalculationsAfterDurationHasBeenSet(instrumentReaders);
+                //MusicSheetReader.doCalculationsAfterDurationHasBeenSet(instrumentReaders);
+                // commented out because it's only open tie deletion, which works incorrectly, see #1530
                 this.currentMeasure.AbsoluteTimestamp = this.currentFraction.clone();
                 this.musicSheet.SheetErrors.finalizeMeasure(this.currentMeasure.MeasureNumber);
                 this.currentFraction.Add(this.currentMeasure.Duration);
@@ -376,8 +387,10 @@ export class MusicSheetReader /*implements IMusicSheetReader*/ {
             }
         }
         this.currentMeasure.ImplicitMeasure = this.checkIfMeasureIsImplicit(maxInstrumentDuration, activeRhythm);
-        if (!this.currentMeasure.ImplicitMeasure) {
+        if (!this.currentMeasure.ImplicitMeasure || sourceMeasureCounter > 0) {
             sourceMeasureCounter++;
+            // for a starting pickup measure (measure number 0), we shouldn't increment,
+            //   but we need to for any implicit measure afterwards, otherwise we'll have the same measure number twice.
         }
         this.currentMeasure.Duration = maxInstrumentDuration; // can be 1/1 in a 4/4 time signature
         // if (this.currentMeasure.Duration.Numerator === 0) {

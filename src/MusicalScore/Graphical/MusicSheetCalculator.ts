@@ -69,7 +69,7 @@ import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynam
 import { FillEmptyMeasuresWithWholeRests } from "../../OpenSheetMusicDisplay/OSMDOptions";
 import { IStafflineNoteCalculator } from "../Interfaces/IStafflineNoteCalculator";
 import { GraphicalUnknownExpression } from "./GraphicalUnknownExpression";
-import { GraphicalChordSymbolContainer } from ".";
+import { GraphicalChordSymbolContainer } from "./GraphicalChordSymbolContainer";
 import { LyricsEntry } from "../VoiceData/Lyrics/LyricsEntry";
 import { Voice } from "../VoiceData/Voice";
 import { TabNote } from "../VoiceData/TabNote";
@@ -318,6 +318,7 @@ export abstract class MusicSheetCalculator {
             // minLength = minimumStaffEntriesWidth * 1.2 + maxInstrNameLabelLength + maxInstructionsLength;
             let maxWidth: number = 0;
             let measures: GraphicalMeasure[];
+            let measureWidthFactor: number = 1;
             for (let i: number = 0; i < this.graphicalMusicSheet.MeasureList.length; i++) {
                 measures = this.graphicalMusicSheet.MeasureList[i];
                 let minimumStaffEntriesWidth: number = this.calculateMeasureXLayout(measures);
@@ -325,6 +326,14 @@ export abstract class MusicSheetCalculator {
                 if (minimumStaffEntriesWidth > maxWidth) {
                     maxWidth = minimumStaffEntriesWidth;
                 }
+                const globalWidthFactor: number = this.graphicalMusicSheet.ParentMusicSheet.MeasureWidthFactor;
+                for (const verticalMeasure of measures) {
+                    if (verticalMeasure?.parentSourceMeasure.WidthFactor) { // some of these GraphicalMeasures might be undefined (multi-rest)
+                        measureWidthFactor = verticalMeasure.parentSourceMeasure.WidthFactor;
+                        break;
+                    }
+                }
+                minimumStaffEntriesWidth *= globalWidthFactor * measureWidthFactor;
                 //console.log(`min width for measure ${measures[0].MeasureNumber}: ${minimumStaffEntriesWidth}`);
                 MusicSheetCalculator.setMeasuresMinStaffEntriesWidth(measures, minimumStaffEntriesWidth);
                 // minLength = Math.max(minLength, minimumStaffEntriesWidth * 1.2 + maxInstructionsLength);
@@ -863,6 +872,7 @@ export abstract class MusicSheetCalculator {
                         // (re-)color notes
                         for (const staffEntry of graphicalMeasure.staffEntries) {
                             for (const gve of staffEntry.graphicalVoiceEntries) {
+                                gve.applyCustomNoteheads();
                                 gve.color();
                             }
                         }
@@ -1381,10 +1391,15 @@ export abstract class MusicSheetCalculator {
             useStaffEntryBorderLeft);
 
         const beginOfNextNote: Fraction = Fraction.plus(endAbsoluteTimestamp, maxNoteLength);
+        const placementFraction: Fraction = beginOfNextNote.clone();
+        const endOffsetFraction: Fraction = graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.EndOffsetFraction;
+        if (endOffsetFraction && this.rules.UseEndOffsetForExpressions) {
+            placementFraction.Add(graphicalContinuousDynamic.ContinuousDynamic.EndMultiExpression.EndOffsetFraction);
+        }
         // TODO for the last note of the piece (wedge ending after last note), this timestamp is incorrect, being after the last note
         //   but there's a workaround in getRelativePositionInStaffLineFromTimestamp() via the variable endAfterRightStaffEntry
         const nextNotePosInStaffLine: PointF2D = this.getRelativePositionInStaffLineFromTimestamp(
-            beginOfNextNote, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
+            placementFraction, staffIndex, endStaffLine, isPartOfMultiStaffInstrument, 0,
             graphicalContinuousDynamic.ContinuousDynamic.DynamicType === ContDynamicEnum.diminuendo);
         const wedgePadding: number = this.rules.SoftAccentWedgePadding;
         const staffEntryWidth: number = container.getFirstNonNullStaffEntry().PositionAndShape.Size.width; // staff entry widths for whole notes is too long
@@ -2357,14 +2372,23 @@ export abstract class MusicSheetCalculator {
     }
 
     protected calculatePageLabels(page: GraphicalMusicPage): void {
-        if (this.rules.RenderSingleHorizontalStaffline) {
-            page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width;
-            //page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width + this.rules.PageRightMargin;
-            page.PositionAndShape.calculateBoundingBox();
-            this.graphicalMusicSheet.ParentMusicSheet.pageWidth = page.PositionAndShape.Size.width;
-        }
         // The PositionAndShape child elements of page need to be manually connected to the lyricist, composer, subtitle, etc.
         // because the page is only available now
+
+        // fix width of SVG, sheet and horizontal scroll bar being too long (~32767 = SheetMaximumWidth) for single line scores
+        if (this.rules.RenderSingleHorizontalStaffline) {
+            //page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width + this.rules.PageRightMargin;
+            page.PositionAndShape.calculateBoundingBox([GraphicalMeasure.name]); // ignore measures, whose bounding boxes somehow get messed up otherwise
+            // note: "GraphicalMeasure" instead of GraphicalMeasure.name doesn't work with minified builds (they change class names)
+            // note: calculateBoundingBox by default changes measure.PositionAndShape.Size.width for some reason,
+            //   inaccurate for RenderSingleHorizontalStaffline, e.g. the cursor type 3 that highlights the whole measure will get wrong width
+            //   correct width was set previously via MusicSystemBuilder.setMeasureWidth().
+
+            // limit SVG and scroll bar width so it's not ~32767 (SheetMaximumWidth):
+            this.graphicalMusicSheet.ParentMusicSheet.pageWidth = page.PositionAndShape.Size.width;
+            // page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width; // doesn't seem to affect anything
+        }
+
         let firstSystemAbsoluteTopMargin: number = 10;
         let lastSystemAbsoluteBottomMargin: number = -1;
         if (page.MusicSystems.length > 0) {
@@ -2374,12 +2398,15 @@ export abstract class MusicSheetCalculator {
             lastSystemAbsoluteBottomMargin = lastMusicSystem.PositionAndShape.RelativePosition.y + lastMusicSystem.PositionAndShape.BorderBottom;
         }
         //const firstStaffLine: StaffLine = this.graphicalMusicSheet.MusicPages[0].MusicSystems[0].StaffLines[0];
-        if (this.graphicalMusicSheet.Title && this.rules.RenderTitle) {
-            const title: GraphicalLabel = this.graphicalMusicSheet.Title;
+        const title: GraphicalLabel = this.graphicalMusicSheet.Title;
+        if (title && this.rules.RenderTitle) {
             title.PositionAndShape.Parent = page.PositionAndShape;
             //title.PositionAndShape.Parent = firstStaffLine.PositionAndShape;
             const relative: PointF2D = new PointF2D();
             relative.x = this.graphicalMusicSheet.ParentMusicSheet.pageWidth / 2;
+            if (this.rules.RenderSingleHorizontalStaffline) {
+                relative.x = Math.max(relative.x, title.PositionAndShape.Size.width);
+            }
             //relative.x = firstStaffLine.PositionAndShape.RelativePosition.x + firstStaffLine.PositionAndShape.Size.width / 2; // half of first staffline width
             relative.y = this.rules.TitleTopDistance + this.rules.SheetTitleHeight;
             title.PositionAndShape.RelativePosition = relative;
@@ -2391,6 +2418,9 @@ export abstract class MusicSheetCalculator {
             subtitle.PositionAndShape.Parent = page.PositionAndShape;
             const relative: PointF2D = new PointF2D();
             relative.x = this.graphicalMusicSheet.ParentMusicSheet.pageWidth / 2;
+            if (this.rules.RenderSingleHorizontalStaffline) {
+                relative.x = title.PositionAndShape.RelativePosition.x; //Math.max(relative.x, title.PositionAndShape.Size.width);
+            }
             //relative.x = firstStaffLine.PositionAndShape.RelativePosition.x + firstStaffLine.PositionAndShape.Size.width / 2; // half of first staffline width
             relative.y = this.rules.TitleTopDistance + this.rules.SheetTitleHeight + this.rules.SheetMinimumDistanceBetweenTitleAndSubtitle;
             const lines: number = subtitle.TextLines?.length;
@@ -2417,6 +2447,9 @@ export abstract class MusicSheetCalculator {
             //relative.x = Math.min(this.graphicalMusicSheet.ParentMusicSheet.pageWidth - this.rules.PageRightMargin,
             //  firstStaffLineEndX); // awkward with 2-bar score
             relative.x = this.graphicalMusicSheet.ParentMusicSheet.pageWidth - this.rules.PageRightMargin;
+            // if (this.rules.RenderSingleHorizontalStaffline) {
+            //     relative.x = page.PositionAndShape.BorderMarginLeft + title.PositionAndShape.Size.width * 2;
+            // }
             //relative.x = firstStaffLine.PositionAndShape.Size.width;
             //when this is less, goes higher.
             //So 0 is top of the sheet, 22 or so is touching the music system margin
@@ -2478,6 +2511,19 @@ export abstract class MusicSheetCalculator {
             relative.y -= copyright.PositionAndShape.BorderTop;
             copyright.PositionAndShape.RelativePosition = relative;
             page.Labels.push(copyright);
+        }
+        // we need to do this again to not cut off the title for short scores:
+        //   (and fix SVG and horizontal scroll bar width)
+        if (this.rules.RenderSingleHorizontalStaffline) {
+            //page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width + this.rules.PageRightMargin;
+            page.PositionAndShape.calculateBoundingBox([GraphicalMeasure.name]); // ignore measures, whose bounding boxes somehow get messed up otherwise
+            // note: calculateBoundingBox by default changes measure.PositionAndShape.Size.width for some reason,
+            //   inaccurate for RenderSingleHorizontalStaffline, e.g. the cursor type 3 that highlights the whole measure will get wrong width
+            //   correct width was set previously via MusicSystemBuilder.setMeasureWidth().
+
+            // limit SVG and scroll bar width so it's not ~32767 (SheetMaximumWidth):
+            this.graphicalMusicSheet.ParentMusicSheet.pageWidth = page.PositionAndShape.Size.width;
+            // page.PositionAndShape.BorderRight = page.PositionAndShape.Size.width; // doesn't seem to affect anything
         }
     }
 
@@ -2598,6 +2644,7 @@ export abstract class MusicSheetCalculator {
             for (let i: number = 0; i < firstSourceMeasure.CompleteNumberOfStaves; i++) {
                 const accidentalCalculator: AccidentalCalculator = new AccidentalCalculator();
                 accidentalCalculators.push(accidentalCalculator);
+                accidentalCalculator.Transpose = this.graphicalMusicSheet.ParentMusicSheet.Transpose;
                 if (firstSourceMeasure.FirstInstructionsStaffEntries[i]) {
                     for (let idx: number = 0, len: number = firstSourceMeasure.FirstInstructionsStaffEntries[i].Instructions.length; idx < len; ++idx) {
                         const abstractNotationInstruction: AbstractNotationInstruction = firstSourceMeasure.FirstInstructionsStaffEntries[i].Instructions[idx];
@@ -2670,7 +2717,7 @@ export abstract class MusicSheetCalculator {
                                    staffEntryLinks: StaffEntryLink[]): GraphicalMeasure {
         const staff: Staff = this.graphicalMusicSheet.ParentMusicSheet.getStaffFromIndex(staffIndex);
         let measure: GraphicalMeasure = undefined;
-        if (activeClefs[staffIndex].ClefType === ClefEnum.TAB) {
+        if (activeClefs[staffIndex].ClefType === ClefEnum.TAB || staff.isTab) {
             staff.isTab = true;
             measure = MusicSheetCalculator.symbolFactory.createTabStaffMeasure(sourceMeasure, staff);
         } else if (sourceMeasure.multipleRestMeasures && this.rules.RenderMultipleRestMeasures) {
@@ -2737,7 +2784,8 @@ export abstract class MusicSheetCalculator {
                 // is there an inStaff ClefInstruction? -> update activeClef
                 for (let idx: number = 0, len: number = sourceStaffEntry.Instructions.length; idx < len; ++idx) {
                     const abstractNotationInstruction: AbstractNotationInstruction = sourceStaffEntry.Instructions[idx];
-                    if (abstractNotationInstruction instanceof ClefInstruction) {
+                    if (abstractNotationInstruction instanceof ClefInstruction && activeClefs[staffIndex]?.ClefType !== ClefEnum.TAB) {
+                        // if activeClef is TAB, changing it can make the current/next tab measure look like a classical measure. See #1592
                         activeClefs[staffIndex] = <ClefInstruction>abstractNotationInstruction;
                     }
                 }
@@ -2813,7 +2861,7 @@ export abstract class MusicSheetCalculator {
             const lastStaffEntry: SourceStaffEntry = sourceMeasure.LastInstructionsStaffEntries[staffIndex];
             for (let idx: number = 0, len: number = lastStaffEntry.Instructions.length; idx < len; ++idx) {
                 const abstractNotationInstruction: AbstractNotationInstruction = lastStaffEntry.Instructions[idx];
-                if (abstractNotationInstruction instanceof ClefInstruction) {
+                if (abstractNotationInstruction instanceof ClefInstruction && activeClefs[staffIndex]?.ClefType !== ClefEnum.TAB) {
                     activeClefs[staffIndex] = <ClefInstruction>abstractNotationInstruction;
                 }
             }
@@ -3062,6 +3110,23 @@ export abstract class MusicSheetCalculator {
                         if (placement === PlacementEnum.Below) {
                             fingerings.reverse();
                         }
+                        if (fingerings.length > 0) {
+                            let topNote: Note;
+                            for (const gve of gse.graphicalVoiceEntries) {
+                                for (const note of gve.notes) {
+                                    if (!topNote || note.sourceNote.Pitch?.getHalfTone() > topNote.Pitch?.getHalfTone()) {
+                                        topNote = note.sourceNote;
+                                    }
+                                }
+                            }
+                            if (fingerings[0].sourceNote === topNote && placement === PlacementEnum.Above ||
+                                fingerings[0].sourceNote !== topNote && placement === PlacementEnum.Below
+                            ) {
+                                // TODO more elegant solution: order fingerings in the order of each individual note.
+                                //   this is already a rare situation though, would be even more rare for this to matter, and more complex.
+                                fingerings.reverse();
+                            }
+                        }
                         for (let i: number = 0; i < fingerings.length; i++) {
                             const fingering: TechnicalInstruction = fingerings[i];
                             const alignment: TextAlignmentEnum =
@@ -3069,6 +3134,9 @@ export abstract class MusicSheetCalculator {
                             const label: Label = new Label(fingering.value, alignment);
                             const gLabel: GraphicalLabel = new GraphicalLabel(
                                 label, this.rules.FingeringTextSize, label.textAlignment, this.rules, line.PositionAndShape);
+                            if (fingering.fontFamily) {
+                                label.fontFamily = fingering.fontFamily;
+                            }
                             const marginLeft: number = staffEntryPositionX + gLabel.PositionAndShape.BorderMarginLeft;
                             const marginRight: number = staffEntryPositionX + gLabel.PositionAndShape.BorderMarginRight;
                             let skybottomFurthest: number = undefined;

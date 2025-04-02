@@ -116,6 +116,15 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
     }
 
     protected drawStaffLine(staffLine: StaffLine): void {
+        const ctx: Vex.IRenderContext = this.backend.getContext();
+        const stafflineNode: Node = ctx.openGroup();
+        if (stafflineNode) {
+            (stafflineNode as SVGGElement).classList.add("staffline");
+            if (staffLine.ParentStaff) {
+                (stafflineNode as SVGGElement).id =
+                    `${staffLine.ParentStaff.ParentInstrument?.Name}${staffLine.ParentStaff.ParentInstrument?.Id}-${staffLine.ParentStaff?.Id}`;
+            }
+        }
         super.drawStaffLine(staffLine);
         const absolutePos: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
         if (this.rules.RenderSlurs) {
@@ -124,6 +133,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
         if (this.rules.RenderGlissandi) {
             this.drawGlissandi(staffLine as VexFlowStaffLine, absolutePos);
         }
+        ctx.closeGroup();
     }
 
     private drawSlurs(vfstaffLine: VexFlowStaffLine, absolutePos: PointF2D): void {
@@ -151,7 +161,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const newEnd: PointF2D = new PointF2D(gGliss.Line.End.x + abs.x, gGliss.Line.End.y);
             // note that we do not add abs.y, because GraphicalGlissando.calculateLine() uses AbsolutePosition for y,
             //   because unfortunately RelativePosition seems imprecise.
-            this.drawLine(newStart, newEnd, gGliss.Color, gGliss.Width);
+            gGliss.Line.SVGElement = this.drawLine(newStart, newEnd, gGliss.Color, gGliss.Width);
         } else {
             const vfTie: VF.StaveTie = (gGliss as VexFlowGlissando).vfTie;
             if (vfTie) {
@@ -461,19 +471,26 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
             const label: GraphicalLabel = lyricsEntry.GraphicalLabel;
             label.Label.colorDefault = this.rules.DefaultColorLyrics;
             label.SVGNode = this.drawLabel(label, layer);
+            (label.SVGNode as SVGGElement)?.classList.add("lyrics");
         });
     }
 
     protected drawInstrumentBrace(brace: GraphicalObject, system: MusicSystem): void {
+        const ctx: Vex.IRenderContext = this.backend.getContext();
+        ctx.openGroup("brace");
         // Draw InstrumentBrackets at beginning of line
         const vexBrace: VexFlowInstrumentBrace = (brace as VexFlowInstrumentBrace);
-        vexBrace.draw(this.backend.getContext());
+        vexBrace.draw(ctx);
+        ctx.closeGroup();
     }
 
     protected drawGroupBracket(bracket: GraphicalObject, system: MusicSystem): void {
+        const ctx: Vex.IRenderContext = this.backend.getContext();
+        ctx.openGroup("bracket");
         // Draw InstrumentBrackets at beginning of line
         const vexBrace: VexFlowInstrumentBracket = (bracket as VexFlowInstrumentBracket);
-        vexBrace.draw(this.backend.getContext());
+        vexBrace.draw(ctx);
+        ctx.closeGroup();
     }
 
     protected drawOctaveShifts(staffLine: StaffLine): void {
@@ -553,7 +570,7 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                                                      graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.Start.y);
                 const end: PointF2D = new PointF2D(graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.x + line.End.x,
                                                    graphicalExpression.ParentStaffLine.PositionAndShape.AbsolutePosition.y + line.End.y);
-                this.drawLine(start, end, line.colorHex ?? "#000000", line.Width);
+                line.SVGElement = this.drawLine(start, end, line.colorHex ?? "#000000", line.Width);
                 // the null check for colorHex is not strictly necessary anymore, but the previous default color was red.
             }
         }

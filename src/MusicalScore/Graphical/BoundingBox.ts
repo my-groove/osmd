@@ -296,13 +296,26 @@ export class BoundingBox {
     /**
      * This method calculates the BoundingBoxes
      */
-    public calculateBoundingBox(): void {
+    public calculateBoundingBox(ignoreClasses: string[] = []): void {
         if (this.childElements.length === 0) {
             return;
         }
         for (let idx: number = 0, len: number = this.ChildElements.length; idx < len; ++idx) {
             const childElement: BoundingBox = this.ChildElements[idx];
-            childElement.calculateBoundingBox();
+            let calculateChildBbox: boolean = true;
+            for (const classToIgnore of ignoreClasses) {
+                const gObject: GraphicalObject = childElement.DataObject as GraphicalObject;
+                if (gObject.isInstanceOfClass && gObject.isInstanceOfClass(classToIgnore)) {
+                    calculateChildBbox = false;
+                    break;
+                    // measure bbox gets calculated incorrectly, especially with RenderSingleHorizontalStaffline
+                    //   the correct width was previously set via MusicSystemBuilder.setMeasureWidth().
+                }
+            }
+            if (!calculateChildBbox) {
+                continue;
+            }
+            childElement.calculateBoundingBox(ignoreClasses);
         }
 
         // initialize with max/min values
@@ -430,7 +443,7 @@ export class BoundingBox {
             - Math.max(this.AbsolutePosition.x + this.borderLeft, psi.absolutePosition.x + psi.borderLeft);
         const overlapHeight: number = Math.min(this.AbsolutePosition.y + this.borderBottom, psi.absolutePosition.y + psi.borderBottom)
             - Math.max(this.AbsolutePosition.y + this.borderTop, psi.absolutePosition.y + psi.borderTop);
-        if (overlapWidth > 0 && overlapHeight > 0) {
+        if (overlapWidth >= 0 && overlapHeight >= 0) {
             return true;
         }
         return false;

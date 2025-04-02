@@ -37,6 +37,7 @@ import { NoteType } from "../../VoiceData/NoteType";
 import { Arpeggio } from "../../VoiceData/Arpeggio";
 import { GraphicalTie } from "../GraphicalTie";
 import { Note } from "../../VoiceData/Note";
+import { TabNote } from "../../VoiceData/TabNote";
 
 // type StemmableNote = VF.StemmableNote;
 
@@ -323,6 +324,9 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * @param clef
      */
     public addClefAtEnd(clef: ClefInstruction, visible: boolean = true): void {
+        if (this.isTabMeasure) {
+            return; // we don't want clefs at end in tabs. See sample in #1592, measure 41
+        }
         const vfclef: { type: string, size: string, annotation: string } = VexFlowConverter.Clef(clef, "small");
         if (!visible && this.stave.endClef) {
             return; // don't overwrite existing clef with invisible clef
@@ -622,6 +626,11 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * @param ctx
      */
     public draw(ctx: Vex.IRenderContext): void {
+        const measureNode: SVGGElement = ctx.openGroup() as SVGGElement;
+        if (measureNode) {
+            measureNode.classList?.add("vf-measure");
+            measureNode.id = `${this.MeasureNumber}`;
+        }
 
         // Draw stave lines
         this.stave.setContext(ctx).draw();
@@ -689,10 +698,13 @@ export class VexFlowMeasure extends GraphicalMeasure {
             tie.setContext(ctx);
             tie.draw();
         }
+        ctx.closeGroup(); // close measure group
 
         // Draw vertical lines
         for (const connector of this.connectors) {
+            ctx.openGroup("connector");
             connector.setContext(ctx).draw();
+            ctx.closeGroup();
         }
         this.correctNotePositions();
     }
@@ -713,7 +725,19 @@ export class VexFlowMeasure extends GraphicalMeasure {
     // correct position / bounding box (note.setIndex() needs to have been called)
     public correctNotePositions(): void {
         if (this.isTabMeasure) {
-            return;
+            for (const voice of this.getVoicesWithinMeasure()) {
+                for (const ve of voice.VoiceEntries) {
+                    for (const note of ve.Notes) {
+                        const tabNote: TabNote = note as TabNote;
+                        const gNote: VexFlowGraphicalNote = this.rules.GNote(note) as VexFlowGraphicalNote;
+                        if (tabNote.StringNumberTab >= 0) {
+                            gNote.parentVoiceEntry.PositionAndShape.RelativePosition.y =
+                                (tabNote.StringNumberTab - 1) * this.rules.TabStaffInterlineHeightForBboxes;
+                        }
+                    }
+                }
+            }
+            return; // don't do the below y position adaptations meant for non-tab notes
         }
         for (const voice of this.getVoicesWithinMeasure()) {
             for (const ve of voice.VoiceEntries) {
@@ -1305,7 +1329,11 @@ export class VexFlowMeasure extends GraphicalMeasure {
                         graceNotes.push(vfStaveNote);
                     }
                     const graceNoteGroup: VF.GraceNoteGroup = new VF.GraceNoteGroup(graceNotes, graceSlur);
-                    (graceNoteGroup as any).spacing = this.rules.GraceNoteGroupXMargin * 10;
+                    let xMargin: number = this.rules.GraceNoteGroupXMargin;
+                    if (graceNotes.length > 1) {
+                        xMargin /= 3; // prevent overlap. multiple grace notes end up closer to the main note.
+                    }
+                    (graceNoteGroup as any).spacing = xMargin * 10;
                     ((gve as VexFlowVoiceEntry).vfStaveNote as StaveNote).addModifier(0, graceNoteGroup);
                     graceGVoiceEntriesBefore = [];
                 }
@@ -1521,13 +1549,16 @@ export class VexFlowMeasure extends GraphicalMeasure {
         }
         if (fingeringInstructions.length > numberOfFingerings) { // likely multiple instructions per note given (e.g. Sibelius)
             // assign fingerings to notes
+            let unassignedFingeringIndex: number = 0;
             for (const note of voiceEntry.notes) {
                 if (!note.sourceNote.Fingering) {
-                    note.sourceNote.Fingering = fingeringInstructions.pop();
-                    numberOfFingerings++;
-                    if (fingeringInstructions.length === 0) {
+                    if (unassignedFingeringIndex > fingeringInstructions.length - 1) {
                         break;
                     }
+                    note.sourceNote.Fingering = fingeringInstructions[unassignedFingeringIndex];
+                    unassignedFingeringIndex++;
+                } else {
+                    unassignedFingeringIndex++; // we already assigned this fingering to a note, skip.
                 }
             }
         }

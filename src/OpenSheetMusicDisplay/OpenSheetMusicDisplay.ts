@@ -15,7 +15,7 @@ import log from "loglevel";
 import { DrawingParameters } from "../MusicalScore/Graphical/DrawingParameters";
 import { DrawingParametersEnum } from "../Common/Enums/DrawingParametersEnum";
 import { ColoringModes } from "../Common/Enums/ColoringModes";
-import { IOSMDOptions, OSMDOptions, AutoBeamOptions, BackendType, CursorOptions } from "./OSMDOptions";
+import { IOSMDOptions, OSMDOptions, AutoBeamOptions, BackendType, CursorOptions, CursorType } from "./OSMDOptions";
 import { EngravingRules, PageFormat } from "../MusicalScore/Graphical/EngravingRules";
 import { AbstractExpression } from "../MusicalScore/VoiceData/Expressions/AbstractExpression";
 import { Dictionary } from "typescript-collections";
@@ -31,7 +31,7 @@ import { NoteEnum } from "../Common/DataObjects/Pitch";
  * After the constructor, use load() and render() to load and render a MusicXML file.
  */
 export class OpenSheetMusicDisplay {
-    protected version: string = "1.8.6-dev"; // getter: this.Version
+    protected version: string = "1.9.0-dev"; // getter: this.Version
     // at release, bump version and change to -release, afterwards to -dev again
 
     /**
@@ -64,10 +64,14 @@ export class OpenSheetMusicDisplay {
         this.setOptions(options);
     }
 
-    private cursorsOptions: CursorOptions[] = [];
+    /** Options from which OSMD creates cursors in enableOrDisableCursors(). */
+    public cursorsOptions: CursorOptions[] = [];
     public cursors: Cursor[] = [];
     public get cursor(): Cursor { // lowercase for backwards compatibility since cursor -> cursors change
         return this.cursors[0];
+    }
+    public get Cursor(): Cursor {
+        return this.cursor;
     }
     public zoom: number = 1.0;
     protected zoomUpdated: boolean = false;
@@ -88,7 +92,11 @@ export class OpenSheetMusicDisplay {
     protected autoResizeEnabled: boolean;
     protected resizeHandlerAttached: boolean;
     protected followCursor: boolean;
-    protected OnXMLRead: Function;
+    /** A function that is executed when the XML has been read.
+     * The return value will be used as the actual XML OSMD parses,
+     * so you can make modifications to the xml that OSMD will use.
+     * Note that this is (re-)set on osmd.setOptions as `{return xml}`, unless you specify the function in the options. */
+    public OnXMLRead: (xml: string) => string;
 
     /**
      * Load a MusicXML file
@@ -103,7 +111,7 @@ export class OpenSheetMusicDisplay {
             const str: string = <string>content;
             const self: OpenSheetMusicDisplay = this;
             // console.log("substring: " + str.substr(0, 5));
-            if (str.substr(0, 4) === "\x50\x4b\x03\x04") {
+            if (str.startsWith("\x50\x4b\x03\x04")) {
                 log.debug("[OSMD] This is a zip file, unpack it first: " + str);
                 // This is a zip file, unpack it first
                 return MXLHelper.MXLtoXMLstring(str).then(
@@ -117,16 +125,16 @@ export class OpenSheetMusicDisplay {
                 );
             }
             // Javascript loads strings as utf-16, which is wonderful BS if you want to parse UTF-8 :S
-            if (str.substr(0, 3) === "\uf7ef\uf7bb\uf7bf") {
-                log.debug("[OSMD] UTF with BOM detected, truncate first three bytes and pass along: " + str);
+            if (str.startsWith("\uf7ef\uf7bb\uf7bf")) {
+                log.debug("[OSMD] UTF with BOM detected, truncate first 3 bytes and pass along: " + str);
                 // UTF with BOM detected, truncate first three bytes and pass along
-                return self.load(str.substr(3));
+                return self.load(str.substring(3));
             }
             let trimmedStr: string = str;
             if (/^\s/.test(trimmedStr)) { // only trim if we need to. (end of string is irrelevant)
                 trimmedStr = trimmedStr.trim(); // trim away empty lines at beginning etc
             }
-            if (trimmedStr.substr(0, 6).includes("<?xml")) { // first character is sometimes null, making first five characters '<?xm'.
+            if (trimmedStr.startsWith("<?xml")) { // first character is sometimes null, making first five characters '<?xm'.
                 const modifiedXml: string = this.OnXMLRead(trimmedStr); // by default just returns trimmedStr unless a function options.OnXMLRead was set.
                 log.debug("[OSMD] Finally parsing XML content, length: " + modifiedXml.length);
                 // Parse the string representing an xml file
@@ -198,16 +206,24 @@ export class OpenSheetMusicDisplay {
         }
     }
 
-    /**
-     * Render the music sheet in the container
-     */
+    /** Render the loaded music sheet to the container. */
     public render(): void {
         if (!this.graphic) {
-            throw new Error("OpenSheetMusicDisplay: Before rendering a music sheet, please load a MusicXML file");
+            throw new Error("OSMD: Before render, please load a MusicXML file");
         }
         this.drawer?.clear(); // clear canvas before setting width
         // this.graphic.GetCalculator.clearSystemsAndMeasures(); // maybe?
         // this.graphic.GetCalculator.clearRecreatedObjects();
+
+        // drawing range: check if pickup measure and start or end measure number > 1
+        if (this.Sheet.SourceMeasures[0].ImplicitMeasure) {
+            if (this.rules.MinMeasureToDrawNumber > 1) {
+                this.rules.MinMeasureToDrawIndex = this.rules.MinMeasureToDrawNumber; // -1 for index, +1 for pickup
+            }
+            if (this.rules.MaxMeasureToDrawNumber > 0) {
+                this.rules.MaxMeasureToDrawIndex = this.rules.MaxMeasureToDrawNumber; // -1 for index, +1 for pickup
+            }
+        }
 
         // Set page width
         let width: number = this.container.offsetWidth;
@@ -541,9 +557,11 @@ export class OpenSheetMusicDisplay {
         if (options.darkMode) {
             this.rules.applyDefaultColorMusic("#FFFFFF");
             this.rules.PageBackgroundColor = "#000000";
+            this.rules.DarkModeEnabled = true;
         } else if (options.darkMode === false) { // not if undefined!
             this.rules.applyDefaultColorMusic("#000000");
             this.rules.PageBackgroundColor = undefined;
+            this.rules.DarkModeEnabled = false;
         }
         if (options.defaultColorMusic) {
             this.rules.applyDefaultColorMusic(options.defaultColorMusic);
@@ -569,11 +587,16 @@ export class OpenSheetMusicDisplay {
         if (options.defaultFontStyle) {
             this.rules.DefaultFontStyle = options.defaultFontStyle; // e.g. FontStyles.Bold
         }
-        if (options.drawUpToMeasureNumber) {
-            this.rules.MaxMeasureToDrawIndex = options.drawUpToMeasureNumber - 1;
+        if (options.drawUpToMeasureNumber >= 0) {
+            this.rules.MaxMeasureToDrawIndex = Math.max(options.drawUpToMeasureNumber - 1, 0);
+            this.rules.MaxMeasureToDrawNumber = options.drawUpToMeasureNumber;
         }
-        if (options.drawFromMeasureNumber) {
-            this.rules.MinMeasureToDrawIndex = options.drawFromMeasureNumber - 1;
+        if (options.drawFromMeasureNumber >= 0) {
+            this.rules.MinMeasureToDrawIndex = Math.max(options.drawFromMeasureNumber - 1, 0);
+            this.rules.MinMeasureToDrawNumber = options.drawFromMeasureNumber;
+            // if there's a pickup measure (index and number 0), the start index might need to be + 1
+            //   depending on which measure you start rendering from (measure 2 for example, instead of 0),
+            //   so it is currently useful to store this option value separately from the index, to readjust the index.
         }
         if (options.drawUpToPageNumber) {
             this.rules.MaxPageToDrawNumber = options.drawUpToPageNumber;
@@ -623,7 +646,12 @@ export class OpenSheetMusicDisplay {
         if (options.cursorsOptions !== undefined) {
             this.cursorsOptions = options.cursorsOptions;
         } else {
-            this.cursorsOptions = [{type: 0, color: this.EngravingRules.DefaultColorCursor, alpha: 0.5, follow: true}];
+            this.cursorsOptions = [{
+                type: CursorType.Standard,
+                color: this.EngravingRules.DefaultColorCursor,
+                alpha: 0.5,
+                follow: true
+            }];
         }
         if (options.preferredSkyBottomLineBatchCalculatorBackend !== undefined) {
             this.rules.PreferredSkyBottomLineBatchCalculatorBackend = options.preferredSkyBottomLineBatchCalculatorBackend;
@@ -749,10 +777,29 @@ export class OpenSheetMusicDisplay {
                     (this.graphic.GetCalculator as VexFlowMusicSheetCalculator).beamsNeedUpdate = true;
                 }
                 if (self.IsReadyToRender()) {
-                    self.render();
+                    self.renderAndScrollBack(); // just calling render() will scroll to the top of the page
                 }
             }
         );
+    }
+
+    /** Re-render and scroll back to previous scroll bar y position in percent.
+     * If the document keeps the same height/length, the scroll bar position will basically be unchanged.
+     * For example, if you scroll to the bottom of the page, resize by one pixel (or enable dark mode) and call this,
+     *   for the human eye there will be no detectable scrolling or change in the scroll position at all.
+     * If you just call render() instead of renderAndScrollBack(),
+     *   it will scroll you back to the top of the page, even if you were scrolled to the bottom before. */
+    public renderAndScrollBack(): void {
+        const previousScrollY: number = window.scrollY;
+        const previousScrollHeight: number = document.body.scrollHeight; // height of page
+        const previousScrollYPercent: number = previousScrollY / previousScrollHeight;
+        this.render();
+        const newScrollHeight: number = document.body.scrollHeight; // height of page
+        const newScrollY: number = newScrollHeight * previousScrollYPercent;
+        window.scrollTo({
+            top: newScrollY,
+            behavior: "instant" // visually, there is no change in the scroll bar position, as it's the same as before.
+        });
     }
 
     /**
@@ -808,7 +855,7 @@ export class OpenSheetMusicDisplay {
         if (enable) {
             for (let i: number = 0; i < this.cursorsOptions.length; i++){
                 // save previous cursor state
-                const hidden: boolean = this.cursors[i]?.Hidden;
+                const hidden: boolean = this.cursors[i]?.Hidden ?? true;
                 const previousIterator: MusicPartManagerIterator = this.cursors[i]?.Iterator;
                 this.cursors[i]?.hide();
 
@@ -950,7 +997,7 @@ export class OpenSheetMusicDisplay {
             this.drawer.drawableBoundingBoxElement = value; // drawer is sometimes created anew, losing this value, so it's saved in OSMD now.
         }
         if (render) {
-            this.render(); // may create new Drawer.
+            this.renderAndScrollBack(); // may create new Drawer.
         }
     }
 

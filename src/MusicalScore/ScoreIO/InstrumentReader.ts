@@ -138,10 +138,20 @@ export class InstrumentReader {
     try {
       const measureNode: IXmlElement = this.xmlMeasureList[this.currentXmlMeasureIndex];
       const xmlMeasureListArr: IXmlElement[] = measureNode.elements();
+      let measureNumberXml: number;
       if (currentMeasure.Rules.UseXMLMeasureNumbers && !Number.isInteger(currentMeasure.MeasureNumberXML)) {
-        const measureNumberXml: number = parseInt(measureNode.attribute("number")?.value, 10);
+        measureNumberXml = parseInt(measureNode.attribute("number")?.value, 10);
         if (Number.isInteger(measureNumberXml)) {
             currentMeasure.MeasureNumberXML = measureNumberXml;
+        }
+      }
+      const widthFactorAttr: IXmlAttribute = measureNode.attribute("osmdWidthFactor"); // custom xml attribute
+      if (widthFactorAttr) {
+        const widthFactorValue: number = Number.parseFloat(widthFactorAttr.value);
+        if (typeof widthFactorValue === "number" && !isNaN(widthFactorValue)) {
+          currentMeasure.WidthFactor = widthFactorValue;
+        } else {
+          log.info(`xml parse: osmdWidthFactor invalid for measure ${measureNumberXml}`);
         }
       }
       let previousNode: IXmlElement; // needs a null check when accessed because of node index 0!
@@ -263,11 +273,18 @@ export class InstrumentReader {
           let noteDuration: Fraction = new Fraction(0, 1);
           let normalNotes: number = 2;
           let typeDuration: Fraction = undefined;
-          let isTuplet: boolean = false;
+          const restNote: boolean = xmlNode.element("rest") !== undefined;
+          // let isTuplet: boolean = false; // unused now
           if (xmlNode.element("duration")) {
             noteDivisions = parseInt(xmlNode.element("duration").value, 10);
             if (!isNaN(noteDivisions)) {
               noteDuration = new Fraction(noteDivisions, 4 * this.divisions);
+              if (restNote && noteDuration.RealValue > this.ActiveRhythm?.Rhythm.RealValue) {
+                // bug in Virtual Sheet Music Playground and potentially other exporters
+                //   that assigns 4 quarters (whole note) duration to full measure rest in 2/4 measures
+                // note that this.ActiveRhythm can be undefined in some test samples
+                noteDuration = this.ActiveRhythm.Rhythm.clone();
+              }
               if (noteDivisions === 0) {
                 noteDuration = this.getNoteDurationFromTypeNode(xmlNode);
               } else {
@@ -279,7 +296,7 @@ export class InstrumentReader {
                 if (time?.element("normal-notes")) {
                   normalNotes = parseInt(time.element("normal-notes").value, 10);
                 }
-                isTuplet = true;
+                // isTuplet = true;
               }
             } else {
               const errorMsg: string = ITextTranslation.translateText("ReaderErrorMessages/NoteDurationError", "Invalid Note Duration.");
@@ -289,7 +306,6 @@ export class InstrumentReader {
             }
           }
 
-          const restNote: boolean = xmlNode.element("rest") !== undefined;
           //log.info("New note found!", noteDivisions, noteDuration.toString(), restNote);
 
           const notationsNode: IXmlElement = xmlNode.combinedElement("notations"); // select all notation nodes
@@ -381,9 +397,6 @@ export class InstrumentReader {
           if (this.activeRhythm) {
             // (*) this.musicSheet.SheetPlaybackSetting.Rhythm = this.activeRhythm.Rhythm;
           }
-          if (!isTuplet && !isGraceNote) {
-            noteDuration = new Fraction(noteDivisions, 4 * this.divisions);
-          }
           const dots: number = xmlNode.elements("dot").length;
           this.currentVoiceGenerator.read(
             xmlNode, noteDuration, typeDuration, noteTypeXml, normalNotes, restNote,
@@ -466,8 +479,9 @@ export class InstrumentReader {
            }
           }
           const location: IXmlAttribute = xmlNode.attribute("location");
+          const locationValue: string = location?.value ?? "right"; // right is assumed by default in MusicXML spec, see #1522
           const isEndingBarline: boolean = (xmlNodeIndex === xmlMeasureListArr.length - 1);
-          if (isEndingBarline || (location && location.value === "right")) {
+          if (isEndingBarline || locationValue === "right") {
             const stringValue: string = xmlNode.element("bar-style")?.value;
             // TODO apparently we didn't anticipate bar-style not existing (the ? above was missing). how to handle?
             if (stringValue) {
@@ -1233,23 +1247,32 @@ export class InstrumentReader {
    * @returns {Fraction}
    */
   private getNoteDurationForTuplet(xmlNode: IXmlElement): Fraction {
-    let duration: Fraction = new Fraction(0, 1);
-    const typeDuration: Fraction = this.getNoteDurationFromTypeNode(xmlNode);
-    if (xmlNode.element("time-modification")) {
-      const time: IXmlElement = xmlNode.element("time-modification");
-      if (time) {
-        if (time.element("actual-notes") !== undefined && time.element("normal-notes")) {
-          const actualNotes: IXmlElement = time.element("actual-notes");
-          const normalNotes: IXmlElement = time.element("normal-notes");
-          if (actualNotes !== undefined && normalNotes) {
-            const actual: number = parseInt(actualNotes.value, 10);
-            const normal: number = parseInt(normalNotes.value, 10);
-            duration = new Fraction(normal * typeDuration.Numerator, actual * typeDuration.Denominator);
-          }
-        }
-      }
-    }
-    return duration;
+    const durationNode: IXmlElement = xmlNode.element("duration");
+    const durationValue: number = Number.parseInt(durationNode.value, 10);
+    return new Fraction(durationValue, this.divisions * 4);
+    // old method: calculate duration from type, tuplet normal notes etc. this was way more complex and inaccurate
+    // let duration: Fraction = new Fraction(0, 1);
+    // const typeDuration: Fraction = this.getNoteDurationFromTypeNode(xmlNode);
+    // // ^ TODO we need to respect dots for typeDuration. This is much more complicated than just taking duration from XML.
+    // if (xmlNode.element("time-modification")) {
+    //   const time: IXmlElement = xmlNode.element("time-modification");
+    //   if (time) {
+    //     if (time.element("actual-notes") !== undefined && time.element("normal-notes")) {
+    //       const actualNotes: IXmlElement = time.element("actual-notes");
+    //       const normalNotes: IXmlElement = time.element("normal-notes");
+    //       const normalDot: boolean = time.element("normal-dot") ? true : false;
+    //       if (actualNotes !== undefined && normalNotes) {
+    //         const actual: number = parseInt(actualNotes.value, 10);
+    //         let normal: number = parseInt(normalNotes.value, 10);
+    //         if (normalDot) {
+    //           normal *= 1.5;
+    //         }
+    //         duration = new Fraction(normal * typeDuration.Numerator + typeDuration.WholeValue, actual * typeDuration.Denominator);
+    //       }
+    //     }
+    //   }
+    // }
+    // return duration;
   }
 
   private readExpressionStaffNumber(xmlNode: IXmlElement): number {
