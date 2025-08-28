@@ -15,11 +15,14 @@
     <link rel="stylesheet" href="./demo.css"/>
 </head>
 <body>
-
-    <h1 class="ui five column divided grid container fluid" id="header" style="opacity: 0.0">
-        <img src="./favicon.ico?" class="ui image">
-        <%= htmlWebpackPlugin.options.title %>
-    </h1>
+    <div class="ui grid container fluid" id="header" style="opacity:1;">
+        <div class="two wide column">
+            <img src="./favicon.ico?" class="ui small image">
+        </div>
+        <div class="fourteen wide column middle aligned">
+            <h1 class="ui header centered"><%= htmlWebpackPlugin.options.title %></h1>
+        </div>
+    </div>
     <!-- style="visibility: hidden; opacity: 0.0" -->
     <div class="ui stackable five equal width grid container fluid">
         <!-- <div class="column" id="selectSampleContainer">
@@ -28,12 +31,10 @@
         </div> -->
         <div class="column">
             <h3 class="ui header">Zoom controls:</h3>
-            <div>
             <div class="ui horizontal">
-                <input class="ui input" placeholder="100%" style="width: 25%" id="zoom-str"></input>
+                <input type="text" class="ui input" id="sheet-factor-display" placeholder="100%" style="width: 25%" id="zoom-str"></input>
                 <div class="ui button" id="zoom-out-btn">-</div>
                 <div class="ui button" id="zoom-in-btn">+</div>
-            </div>
             </div>
         </div>
         <div class="column">
@@ -51,7 +52,7 @@
         <div class="column">
             <h3 class="ui header">Global Scale:</h3>
             <div class="ui horizontal">
-                    <input class="ui input" id="sheet-factor-display" placeholder="100%" style="width: 25%"></input>
+                    <input type="text" class="ui input" id="sheet-factor-display" placeholder="100%" style="width: 25%"></input>
                     <div class="ui button" id="sheet-minus-btn">-</div>
                     <div class="ui button" id="sheet-plus-btn">+</div>
             </div>
@@ -60,7 +61,7 @@
             <h3 class="ui header" id="selected-measure-field">Selected Measure: -</h3>
             <div class="column">
                 <div class="ui horizontal">
-                    <input class="ui input" id="measure-width-display" placeholder="100%" style="width: 25%"></input>
+                    <input type="text" class="ui input" id="measure-width-display" placeholder="100%" style="width: 25%"></input>
                     <div class="ui button" id="measure-width-minus-btn">-</div>
                     <div class="ui button" id="measure-width-plus-btn">+</div>
                 </div>
