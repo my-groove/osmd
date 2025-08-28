@@ -16,28 +16,24 @@
 </head>
 <body>
 
-<div style="display: flex; gap: 16px;">
+    <h1 class="ui five column divided grid container fluid" id="header" style="opacity: 0.0">
+        <img src="./favicon.ico?" class="ui image">
+        <%= htmlWebpackPlugin.options.title %>
+    </h1>
     <!-- style="visibility: hidden; opacity: 0.0" -->
-        <div class="ui five grid container">
-            <div class="column" id="selectSampleContainer">
-                <h3 class="ui header" id="selectSampleTitle">Select a sample:</h3>
-                <select class="ui selection dropdown" id="selectSample" style="visibility: hidden"></select>
-            </div>
-            <h1 class="ui centered header fixed" id="header" style="opacity: 0.0">
-                <img src="./favicon.ico?" class="ui image">
-                <%= htmlWebpackPlugin.options.title %>
-            </h1>
-        </div>
+    <div class="ui stackable five equal width grid container fluid">
+        <!-- <div class="column" id="selectSampleContainer">
+            <h3 class="ui header" id="selectSampleTitle">Select a sample:</h3>
+            <select class="ui selection dropdown" id="selectSample" style="visibility: hidden"></select>
+        </div> -->
         <div class="column">
             <h3 class="ui header">Zoom controls:</h3>
-            <div class="ui horizontal" id="zoomControlsButtons">
-                <div class="ui input style='width: 15%'" id="zoom-str">???</div>
-                <div class="ui button" id="zoom-out-btn">
-                    <i class="search minus icon"></i>
-                </div>
-                <div class="ui button" id="zoom-in-btn">
-                    <i class="search plus icon"></i>
-                </div>
+            <div>
+            <div class="ui horizontal">
+                <input class="ui input" placeholder="100%" style="width: 25%" id="zoom-str"></input>
+                <div class="ui button" id="zoom-out-btn">-</div>
+                <div class="ui button" id="zoom-in-btn">+</div>
+            </div>
             </div>
         </div>
         <div class="column">
