@@ -688,6 +688,7 @@ import { beethovenSample64 } from './beethoven64';
             // if (paramOpenUrl.startsWith("Beethoven")) {
             //     paramOpenUrl.causeError();
             // }
+            paramOpenUrl = decodeURIComponent(paramOpenUrl);
             selectSampleOnChange(paramOpenUrl);
         } else {
             if (osmd.getLogLevel() < 2) { // debug or trace
@@ -729,15 +730,23 @@ import { beethovenSample64 } from './beethoven64';
     
         if (parameterName === 'openUrl') {
             let startParameterName = 'openUrl=';
+            let startParameterName2 = 'openURL=';
             let endParameterName = '&endUrl';
+            let endParameterName2 = '&endURL';
             let openUrlIndex = location.search.indexOf(startParameterName);
             if (openUrlIndex < 0) {
-                return undefined;
+                openUrlIndex = location.search.indexOf(startParameterName2);
+                if (openUrlIndex < 0) {
+                    return undefined;
+                }
             }
             let endIndex = location.search.indexOf(endParameterName) + endParameterName.length;
             if (endIndex < 0) {
-                console.log("[OSMD] If using openUrl as a parameter, you have to end it with '&endUrl'. openUrl parameter omitted.");
-                return undefined;
+                endIndex = location.search.indexOf(endParameterName2) + endParameterName2.length;
+                if (endIndex < 0) {
+                    console.log("[OSMD] If using openUrl as a parameter, you have to end it with '&endUrl'. openUrl parameter omitted.");
+                    return undefined;
+                }
             }
             let urlString = location.search.substring(openUrlIndex + startParameterName.length, endIndex - endParameterName.length);
             //console.log("openUrl: " + urlString);

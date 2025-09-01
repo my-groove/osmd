@@ -32,7 +32,7 @@ import { ClickListener } from "../Display/ClickListener";
  * After the constructor, use load() and render() to load and render a MusicXML file.
  */
 export class OpenSheetMusicDisplay {
-    protected version: string = "1.9.0-dev"; // getter: this.Version
+    protected version: string = "1.9.2-dev"; // getter: this.Version
     // at release, bump version and change to -release, afterwards to -dev again
 
     /**
@@ -214,7 +214,7 @@ export class OpenSheetMusicDisplay {
     /** Render the loaded music sheet to the container. */
     public render(): void {
         if (!this.graphic) {
-            throw new Error("OSMD: Before render, please load a MusicXML file");
+            throw new Error("OSMD: load() needs to be called before render()");
         }
         this.drawer?.clear(); // clear canvas before setting width
         // this.graphic.GetCalculator.clearSystemsAndMeasures(); // maybe?
