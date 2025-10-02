@@ -46,7 +46,8 @@
     "AUTHORS",
     "CHANGELOG.md",
     "README.md",
-    "external"
+    "external",
+    "tsconfig.json"
   ],
   "repository": {
     "type": "git",
