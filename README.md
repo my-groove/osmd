@@ -89,6 +89,20 @@ Also, **OSMD is a renderer, not an interactive sheet music editor.** Rendering t
   * [Browse through our Issues](https://github.com/opensheetmusicdisplay/opensheetmusicdisplay/issues?&q=is%3Aissue)
   * [Open a new issue](https://github.com/opensheetmusicdisplay/opensheetmusicdisplay/issues/new/choose) (may be moved to Discussions).
 
+### VexFlow Patches
+
+OSMD includes essential patches for VexFlow 1.2.93 that are automatically applied when you install the package. These patches:
+
+* **Fix critical bugs** in VexFlow that affect sheet music rendering
+* **Add missing features** required for proper MusicXML display
+* **Enhance SVG output** with better DOM structure and styling support
+
+**Installation is automatic** - when you `npm install opensheetmusicdisplay` in your project, the patches are automatically applied to your VexFlow installation. No manual configuration required!
+
+For more details about the patches, troubleshooting, or manual control, see the [VexFlow Patches documentation](src/VexFlowPatch/README.md).
+
+**Note**: These patches are designed for VexFlow 1.2.93. Using a different VexFlow version may cause compatibility issues.
+
 ## Sponsor OSMD and get early access to the audio player and more
 
 <a href="https://github.com/sponsors/opensheetmusicdisplay/" alt="OSMD on Github Sponsors">
