@@ -48,7 +48,8 @@
     "CHANGELOG.md",
     "README.md",
     "external",
-    "tsconfig.json"
+    "tsconfig.json",
+    "src/VexFlowPatch/**/*.js"
   ],
   "repository": {
     "type": "git",
