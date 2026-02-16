@@ -15,8 +15,10 @@ respect modifier.y_shift (y_shift affects y position of rendering)
 breath mark support
 
 beam.js (custom addition):
+fix beam slopes changing on each re-render (render() call)
 add flat_beams, flat_beam_offset, flat_beam_offset_per_beam render_option (fixed in vexflow 4)
 able to add svg node id+class to beam (not yet in vexflow 4)
+fix beam not covering last note's stem: fix end X position to use Stem.WIDTH instead of hardcoded 1 (#1593)
 
 clef.js (merged vexflow 4):
 open group to get SVG group+class for clef
@@ -53,14 +55,18 @@ prevent a bug where a modifier width is NaN, leading to a VexFlow error (fixed v
 stave.setSection(section, y, xOffset = 0, fontSize = 12):
 add xOffset, fontSize arguments (see stavesection.js) (merged vexflow 4.x)
 
+stavebarline.js (custom addition):
+support double_heavy barline (heavy-heavy in MusicXML)
+
 stavenote.js (custom addition):
 Fix stem/flag formatting. Instead of shifting notes by default, update the stem/flag rendering to render different voices aligned.
   Only offset if a note is the same voice, same note.
   (not yet in vexflow 4, PR 1263 open)
 able to add svg node id+class to stem (merged vexflow 4.x)
 Save and restore noteheads (e.g. slash noteheads) in reset()
+open group for ledger lines (SVG)
 preFormat() and getBoundingBox(): add paddingRight variable to allow for custom right padding (e.g. for long lyrics below note)
-allow notehead y_shift without 
+allow notehead y_shift without shifting stem (stem_up_y_shift)
 
 staverepetition.js (fixed vexflow 4):
 add TO_CODA enum to type() and draw()
@@ -71,6 +77,9 @@ stavesection.js (half-fixed vexflow 4.x, collision, box not removable):
 stavesection.draw():
 adjust rectangle positioning, make height depend on text height
 fix rehearsal marks not rendered with canvas backend in browser
+
+stavetempo.js (custom addition):
+open a context group for vf-stavetempo, and one for its subgroup vf-bpm (for just the "= 150" text node)
 
 stavetie.js (merged vexflow 4.x):
 context opens group for stavetie, can get stavetie SVG element via getAttribute("el")
@@ -109,8 +118,12 @@ Add extra_stroke_scale, y_spacing_scale
 tuplet.js (vexflow 4: need to check if this option available):
 Add option tuplet.RenderTupletNumber
 
-Currently, we are using Vexflow 1.2.93, because of some formatter advantages
-compared to Vexflow 3.x versions, see this issue:
+vexflow_font.js: (custom fix):
+downstem flag glyph (v9a): rotate and shift the flag so that it suits the stem better, as 1px steps don't align here)
+  to shift and rotate glyphs, use src/VexFlowPatch/tools/shift_glyph.py and rorate_glyph.py
+
+Currently, we are using a heavily improved and customized version of Vexflow 1.2.93,
+because of some formatter advantages compared to Vexflow 3.x versions, see this issue:
 https://github.com/opensheetmusicdisplay/opensheetmusicdisplay/issues/915
 
 Because of that, we need to patch in a few fixes that came after 1.2.93, as well as making custom additions for our needs.

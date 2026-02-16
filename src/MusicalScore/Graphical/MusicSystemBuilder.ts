@@ -318,11 +318,14 @@ export class MusicSystemBuilder {
         const instruments: Instrument[] = this.graphicalMusicSheet.ParentMusicSheet.Instruments;
         for (let idx: number = 0, len: number = instruments.length; idx < len; ++idx) {
             const instrument: Instrument = instruments[idx];
-            if (!instrument.Visible || instrument.Voices.length === 0) {
+            if (!instrument.isVisible() || instrument.Voices.length === 0) {
                 continue;
             }
             for (let idx2: number = 0, len2: number = instrument.Staves.length; idx2 < len2; ++idx2) {
                 const staff: Staff = instrument.Staves[idx2];
+                if (!staff?.Visible) {
+                    continue;
+                }
                 staffList.push(staff);
             }
         }
@@ -393,6 +396,7 @@ export class MusicSystemBuilder {
 
     /**
      * Initialize the active Instructions from the first [[SourceMeasure]] of first [[SourceMusicPart]].
+     * Also tracks instruction changes through measures before the first visible measure (for drawFromMeasureNumber).
      * @param measureList
      */
     protected initializeActiveInstructions(measureList: GraphicalMeasure[]): void {
@@ -415,6 +419,56 @@ export class MusicSystemBuilder {
                     firstSourceMeasure.FirstInstructionsStaffEntries[staffIndex].Instructions[2];
                 // if (firstRhythmInstruction) {
                 this.activeRhythm[i] = firstRhythmInstruction;
+            }
+
+            // Track instruction changes through measures before the first visible measure (for drawFromMeasureNumber).
+            // This ensures clef/key/rhythm changes in non-rendered measures are properly accounted for.
+            const sourceMeasures: SourceMeasure[] = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures;
+            for (let measureIdx: number = 0; measureIdx < this.rules.MinMeasureToDrawIndex; measureIdx++) {
+                const sourceMeasure: SourceMeasure = sourceMeasures[measureIdx];
+                if (!sourceMeasure) {
+                    continue;
+                }
+                for (let visStaffIdx: number = 0, len: number = this.visibleStaffIndices.length; visStaffIdx < len; visStaffIdx++) {
+                    const staffIndex: number = this.visibleStaffIndices[visStaffIdx];
+                    // Check FirstInstructionsStaffEntries for clef/key/rhythm changes
+                    const firstEntry: SourceStaffEntry = sourceMeasure.FirstInstructionsStaffEntries[staffIndex];
+                    if (firstEntry) {
+                        for (let idx: number = 0, len2: number = firstEntry.Instructions.length; idx < len2; ++idx) {
+                            const instruction: AbstractNotationInstruction = firstEntry.Instructions[idx];
+                            if (instruction instanceof ClefInstruction) {
+                                this.activeClefs[visStaffIdx] = <ClefInstruction>instruction;
+                            } else if (instruction instanceof KeyInstruction) {
+                                this.activeKeys[visStaffIdx] = <KeyInstruction>instruction;
+                            } else if (instruction instanceof RhythmInstruction) {
+                                this.activeRhythm[visStaffIdx] = <RhythmInstruction>instruction;
+                            }
+                        }
+                    }
+                    // Check staff entries within the measure for mid-measure clef changes
+                    const entries: SourceStaffEntry[] = sourceMeasure.getEntriesPerStaff(staffIndex);
+                    for (let idx: number = 0, len2: number = entries.length; idx < len2; ++idx) {
+                        const staffEntry: SourceStaffEntry = entries[idx];
+                        if (staffEntry.Instructions) {
+                            for (let idx2: number = 0, len3: number = staffEntry.Instructions.length; idx2 < len3; ++idx2) {
+                                const instruction: AbstractNotationInstruction = staffEntry.Instructions[idx2];
+                                if (instruction instanceof ClefInstruction) {
+                                    this.activeClefs[visStaffIdx] = <ClefInstruction>instruction;
+                                }
+                            }
+                        }
+                    }
+                    // Check LastInstructionsStaffEntries for end-of-measure clef changes
+                    const lastEntry: SourceStaffEntry = sourceMeasure.LastInstructionsStaffEntries[staffIndex];
+                    if (lastEntry) {
+                        for (let idx: number = 0, len2: number = lastEntry.Instructions.length; idx < len2; ++idx) {
+                            const instruction: AbstractNotationInstruction = lastEntry.Instructions[idx];
+                            if (instruction instanceof ClefInstruction) {
+                                this.activeClefs[visStaffIdx] = <ClefInstruction>instruction;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -771,7 +825,9 @@ export class MusicSystemBuilder {
         /*if (this.measureListIndex === this.measureList.length - 1 || this.measureList[this.measureListIndex][0].parentSourceMeasure.endsPiece) {
             return SystemLinesEnum.ThinBold;
         }*/
-        if (this.nextMeasureHasKeyInstructionChange() || this.thisMeasureEndsWordRepetition() || this.nextMeasureBeginsWordRepetition()) {
+        if (this.nextMeasureHasKeyInstructionChange()) {
+        //if (this.nextMeasureHasKeyInstructionChange() || this.thisMeasureEndsWordRepetition() || this.nextMeasureBeginsWordRepetition()) {
+        //  previously, we forced a double thin barline for places like "to coda" end of measure, even if it there's no double thin barline in the xml
             return SystemLinesEnum.DoubleThin;
         }
         if (!sourceMeasure) {
