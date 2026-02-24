@@ -46,7 +46,7 @@ import { GraphicalSlur } from "../GraphicalSlur";
 import { BoundingBox } from "../BoundingBox";
 import { ContinuousDynamicExpression } from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousDynamicExpression";
 import { VexFlowContinuousDynamicExpression } from "./VexFlowContinuousDynamicExpression";
-import { InstantaneousTempoExpression, TempoEnum } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
+import { InstantaneousTempoExpression, TempoType } from "../../VoiceData/Expressions/InstantaneousTempoExpression";
 import { AlignRestOption } from "../../../OpenSheetMusicDisplay/OSMDOptions";
 import { VexFlowStaffLine } from "./VexFlowStaffLine";
 import { EngravingRules } from "../EngravingRules";
@@ -822,7 +822,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     let yShift: number = this.rules.MetronomeMarkYShift;
     let hasExpressionsAboveStaffline: boolean = false;
     for (const expression of metronomeExpression.parentMeasure.TempoExpressions) {
-      const isMetronomeExpression: boolean = expression.InstantaneousTempo?.Enum === TempoEnum.metronomeMark;
+      const isMetronomeExpression: boolean = expression.InstantaneousTempo?.TempoType === TempoType.metronomeMark;
       if (expression.getPlacementOfFirstEntry() === PlacementEnum.Above &&
           !isMetronomeExpression) {
         hasExpressionsAboveStaffline = true;
@@ -923,7 +923,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
       endMeasure = this.graphicalMusicSheet.getLastGraphicalMeasureFromIndex(staffIndex, true);
     }
     let startMeasure: GraphicalMeasure = undefined;
-    if (octaveShift.ParentEndMultiExpression) {
+    if (octaveShift.ParentStartMultiExpression) {
       startMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(octaveShift.ParentStartMultiExpression.SourceMeasureParent,
                                                                                            staffIndex);
     } else {
@@ -990,6 +990,17 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
         startStaffEntry = startMeasure.staffEntries[0];
       }
       let endStaffEntry: GraphicalStaffEntry = endMeasure.findGraphicalStaffEntryFromTimestamp(endTimeStamp);
+      if (!endStaffEntry) {
+        // No exact match (e.g. pending stop with computed inclusive end).
+        // Find the latest staff entry at or before the end timestamp.
+        for (let i: number = endMeasure.staffEntries.length - 1; i >= 0; i--) {
+          const entry: GraphicalStaffEntry = endMeasure.staffEntries[i];
+          if (entry.relInMeasureTimestamp?.lte(endTimeStamp)) {
+            endStaffEntry = entry;
+            break;
+          }
+        }
+      }
       if (!endStaffEntry) { // fix for rendering range set
         endStaffEntry = endMeasure.staffEntries[endMeasure.staffEntries.length - 1];
       }
@@ -1027,11 +1038,12 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
             const nextOctaveShift: VexFlowOctaveShift = new VexFlowOctaveShift(octaveShift, nextShiftFirstMeasure.PositionAndShape);
             let nextShiftLastMeasure: GraphicalMeasure = this.findLastStafflineMeasure(nextShiftStaffline);
 
-            if (i < systemsInBetweenCount - 1) {
-              // if not - 1, the last octaveshift will always go to the end of the staffline
+            if (i < endStaffLine.ParentMusicSystem.Id - 1) {
+              // "in-between" staffline before the staffline where the octave shift ends: make octave shift go to end of staffline
               nextOctaveShift.endsOnDifferentStaffLine = true;
               nextOctaveShift.graphicalEndAtMeasureEnd = true;
               nextOctaveShift.endMeasure = nextShiftLastMeasure;
+              // this is tested by the sample test_octaveshift_multiline_grace_notes.musicxml (see PR #1646)
             }
             const firstNote: GraphicalStaffEntry = nextShiftFirstMeasure.staffEntries[0];
             let lastNote: GraphicalStaffEntry = nextShiftLastMeasure.staffEntries[nextShiftLastMeasure.staffEntries.length - 1];
@@ -1490,7 +1502,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
     const measures: VexFlowMeasure[] = <VexFlowMeasure[]>this.graphicalMusicSheet.MeasureList[measureIndex];
     for (let idx: number = 0, len: number = measures.length; idx < len; ++idx) {
       const graphicalMeasure: VexFlowMeasure = measures[idx];
-      if (graphicalMeasure && graphicalMeasure.ParentStaffLine && graphicalMeasure.ParentStaff.ParentInstrument.Visible) {
+      if (graphicalMeasure && graphicalMeasure.ParentStaffLine && graphicalMeasure.ParentStaff.isVisible()) {
         uppermostMeasure = <VexFlowMeasure>graphicalMeasure;
         break;
       }

@@ -205,6 +205,8 @@ export class VexFlowConverter {
         switch (notehead.Shape) {
             case NoteHeadShape.NORMAL:
                 return "";
+            case NoteHeadShape.NONE:
+                return ""; // none noteheads are invisible, handled via transparency
             case NoteHeadShape.DIAMOND:
                 return codeStart + "D" + codeFilled;
             case NoteHeadShape.TRIANGLE:
@@ -298,7 +300,7 @@ export class VexFlowConverter {
                         let previousVoiceEntry: VoiceEntry, followingVoiceEntry: VoiceEntry;
                         let pauseVEIndex: number = -1;
                         for (let i: number = 0; i < neighborGSEs.length; i++) {
-                            if (neighborGSEs[i]?.graphicalVoiceEntries[0].parentVoiceEntry === pauseVoiceEntry) {
+                            if (neighborGSEs[i]?.graphicalVoiceEntries[0]?.parentVoiceEntry === pauseVoiceEntry) {
                                 pauseVEIndex = i;
                                 break;
                             }
@@ -781,6 +783,7 @@ export class VexFlowConverter {
                     if (originalGetWidth) {
                         (vfArt as any).getWidth = function (): number {
                         return 0; // Return 0 width to prevent articulations from adding spacing
+                        // best example: Schubert - An die Musik, measure 2
                         };
                     }
                     break;
@@ -1319,5 +1322,3 @@ export class VexFlowConverter {
         return ret;
     }
 }
-
-

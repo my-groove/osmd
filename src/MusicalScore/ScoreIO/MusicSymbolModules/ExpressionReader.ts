@@ -34,7 +34,8 @@ export class ExpressionReader {
     private openContinuousDynamicExpressions: ContinuousDynamicExpression[] = [];
     private openContinuousTempoExpression: ContinuousTempoExpression;
     private activeInstantaneousDynamic: InstantaneousDynamicExpression;
-    private openOctaveShift: OctaveShift;
+    private openOctaveShifts: Map<number, OctaveShift> = new Map();
+    private pendingOctaveShiftStops: Map<number, {measure: SourceMeasure, endTimestamp: Fraction}> = new Map();
     private lastWedge: ContinuousDynamicExpression;
     private WedgeYPosXml: number;
     private openPedal: Pedal;
@@ -78,20 +79,7 @@ export class ExpressionReader {
             } else { this.directionTimestamp = Fraction.createFromFraction(offsetFraction); }
         }
 
-        // read default-y for wedge node
-        let newWedgeYPos: number;
-        const directionTypeNode: IXmlElement = xmlNode.element("direction-type");
-        let wedgeNode: IXmlElement;
-        if (directionTypeNode) {
-            wedgeNode = directionTypeNode.element("wedge");
-            if (wedgeNode) {
-                const yPosAttr: IXmlAttribute = wedgeNode.attribute("default-y");
-                if (yPosAttr) {
-                    newWedgeYPos = this.readPosition(yPosAttr);
-                }
-            }
-        }
-        this.WedgeYPosXml = newWedgeYPos;
+        const directionTypeNodes: IXmlElement[] = xmlNode.elements("direction-type");
 
         const placeAttr: IXmlAttribute = xmlNode.attribute("placement");
         if (placeAttr) {
@@ -110,20 +98,24 @@ export class ExpressionReader {
                 this.placement = PlacementEnum.Below;
             }
         }
-        if (this.placement === PlacementEnum.NotYetDefined) {
-            try {
-                if (directionTypeNode) {
+        try {
+            for (const directionTypeNode of directionTypeNodes) {
+                const wedgeNode: IXmlElement = directionTypeNode.element("wedge");
+                if (wedgeNode) {
+                    const defAttr: IXmlAttribute = wedgeNode.attribute("default-y");
+                    if (defAttr) {
+                        this.WedgeYPosXml = parseInt(defAttr.value, 10);
+                        if (this.placement === PlacementEnum.NotYetDefined) {
+                            this.readExpressionPlacement(defAttr, "read wedge y pos");
+                        }
+                    }
+                }
+                if (this.placement === PlacementEnum.NotYetDefined) {
                     const dynamicsNode: IXmlElement = directionTypeNode.element("dynamics");
                     if (dynamicsNode) {
                         const defAttr: IXmlAttribute = dynamicsNode.attribute("default-y");
                         if (defAttr) {
                             this.readExpressionPlacement(defAttr, "read dynamics y pos");
-                        }
-                    }
-                    if (wedgeNode) {
-                        const defAttr: IXmlAttribute = wedgeNode.attribute("default-y");
-                        if (defAttr) {
-                            this.readExpressionPlacement(defAttr, "read wedge y pos");
                         }
                     }
                     const wordsNode: IXmlElement = directionTypeNode.element("words");
@@ -141,14 +133,13 @@ export class ExpressionReader {
                         }
                     }
                 }
-            } catch (ex) {
-                const errorMsg: string = ITextTranslation.translateText(  "ReaderErrorMessages/ExpressionPlacementError",
-                                                                          "Invalid expression placement. Set to default.");
-                log.debug("ExpressionReader.readExpressionParameters", errorMsg, ex);
-                this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
-                this.placement = PlacementEnum.Below;
             }
-
+        } catch (ex) {
+            const errorMsg: string = ITextTranslation.translateText(  "ReaderErrorMessages/ExpressionPlacementError",
+                                                                      "Invalid expression placement. Set to default.");
+            log.debug("ExpressionReader.readExpressionParameters", errorMsg, ex);
+            this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
+            this.placement = PlacementEnum.Below;
         }
         if (this.placement === PlacementEnum.NotYetDefined) {
             if (currentInstrument.Staves.length > 1) {
@@ -199,78 +190,80 @@ export class ExpressionReader {
                 isDynamicInstruction = true;
             }
         }
-        const dirNode: IXmlElement = directionNode.element("direction-type");
-        if (!dirNode) {
-            return;
-        }
-        let dirContentNode: IXmlElement = dirNode.element("metronome");
-        if (dirContentNode) {
-            const beatUnit: IXmlElement = dirContentNode.element("beat-unit");
-            // TODO check second "beat-unit", e.g. quarter = half
-            const dotted: boolean = dirContentNode.element("beat-unit-dot") !== undefined;
-            const bpm: IXmlElement = dirContentNode.element("per-minute");
-            // TODO check print-object = false -> don't render invisible metronome mark
-            if (beatUnit !== undefined && bpm) {
-                const useCurrentFractionForPositioning: boolean = (dirContentNode.hasAttributes && dirContentNode.attribute("default-x") !== undefined);
-                if (useCurrentFractionForPositioning) {
-                    this.directionTimestamp = Fraction.createFromFraction(timestampFraction);
+        const dirNodes: IXmlElement[] = directionNode.elements("direction-type");
+        for (const dirNode of dirNodes) {
+            let dirContentNode: IXmlElement = dirNode.element("metronome");
+            if (dirContentNode) {
+                const beatUnit: IXmlElement = dirContentNode.element("beat-unit");
+                // TODO check second "beat-unit", e.g. quarter = half
+                const dotted: boolean = dirContentNode.element("beat-unit-dot") !== undefined;
+                const bpm: IXmlElement = dirContentNode.element("per-minute");
+                // TODO check print-object = false -> don't render invisible metronome mark
+                if (beatUnit !== undefined && bpm) {
+                    const useCurrentFractionForPositioning: boolean = (dirContentNode.hasAttributes && dirContentNode.attribute("default-x") !== undefined);
+                    if (useCurrentFractionForPositioning) {
+                        this.directionTimestamp = Fraction.createFromFraction(timestampFraction);
+                    }
+                    // per-minute can contain text alongside the number (e.g. "c. 108" for circa)
+                    // -> find first number ("c. 108" matches 108, "108.5" would match 108.5)
+                    const bpmMatch: RegExpMatchArray = bpm.value.match(/(\d+\.?\d*)/);
+                    const bpmNumber: number = bpmMatch ? parseFloat(bpmMatch[1]) : NaN;
+                    this.createNewTempoExpressionIfNeeded(currentMeasure);
+                    const instantaneousTempoExpression: InstantaneousTempoExpression =
+                        new InstantaneousTempoExpression(undefined,
+                                                         this.placement,
+                                                         this.staffNumber,
+                                                         bpmNumber,
+                                                         this.currentMultiTempoExpression,
+                                                         true);
+                    instantaneousTempoExpression.parentMeasure = currentMeasure;
+                    this.soundTempo = bpmNumber;
+                    // make sure to take dotted beats into account
+                    currentMeasure.TempoInBPM = this.soundTempo * (dotted?1.5:1);
+                    if (this.musicSheet.DefaultStartTempoInBpm === 0) {
+                        this.musicSheet.DefaultStartTempoInBpm = this.soundTempo;
+                    }
+                    this.musicSheet.HasBPMInfo = true;
+                    instantaneousTempoExpression.dotted = dotted;
+                    instantaneousTempoExpression.beatUnit = beatUnit.value;
+                    this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
+                    this.currentMultiTempoExpression.CombinedExpressionsText = "test";
                 }
-                const bpmNumber: number = parseFloat(bpm.value);
-                this.createNewTempoExpressionIfNeeded(currentMeasure);
-                const instantaneousTempoExpression: InstantaneousTempoExpression =
-                    new InstantaneousTempoExpression(undefined,
-                                                     this.placement,
-                                                     this.staffNumber,
-                                                     bpmNumber,
-                                                     this.currentMultiTempoExpression,
-                                                     true);
-                instantaneousTempoExpression.parentMeasure = currentMeasure;
-                this.soundTempo = bpmNumber;
-                // make sure to take dotted beats into account
-                currentMeasure.TempoInBPM = this.soundTempo * (dotted?1.5:1);
-                if (this.musicSheet.DefaultStartTempoInBpm === 0) {
-                    this.musicSheet.DefaultStartTempoInBpm = this.soundTempo;
+                continue;
+            }
+
+            dirContentNode = dirNode.element("dynamics");
+            if (dirContentNode) {
+                const fromNotation: boolean = directionNode.element("notations") !== undefined;
+                this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, timestampFraction, fromNotation);
+                continue;
+            }
+
+            dirContentNode = dirNode.element("words");
+            if (dirContentNode) {
+                if (isTempoInstruction) {
+                    this.createNewTempoExpressionIfNeeded(currentMeasure);
+                    this.currentMultiTempoExpression.CombinedExpressionsText = dirContentNode.value;
+                    const instantaneousTempoExpression: InstantaneousTempoExpression = new InstantaneousTempoExpression(
+                        dirContentNode.value, this.placement, this.staffNumber, this.soundTempo, this.currentMultiTempoExpression);
+                    this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
+                } else if (!isDynamicInstruction) {
+                    this.interpretWords(dirContentNode, currentMeasure, timestampFraction);
                 }
-                this.musicSheet.HasBPMInfo = true;
-                instantaneousTempoExpression.dotted = dotted;
-                instantaneousTempoExpression.beatUnit = beatUnit.value;
-                this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
-                this.currentMultiTempoExpression.CombinedExpressionsText = "test";
+                continue;
             }
-            return;
-        }
 
-        dirContentNode = dirNode.element("dynamics");
-        if (dirContentNode) {
-            const fromNotation: boolean = directionNode.element("notations") !== undefined;
-            this.interpretInstantaneousDynamics(dirContentNode, currentMeasure, timestampFraction, fromNotation);
-            return;
-        }
-
-        dirContentNode = dirNode.element("words");
-        if (dirContentNode) {
-            if (isTempoInstruction) {
-                this.createNewTempoExpressionIfNeeded(currentMeasure);
-                this.currentMultiTempoExpression.CombinedExpressionsText = dirContentNode.value;
-                const instantaneousTempoExpression: InstantaneousTempoExpression =
-                    new InstantaneousTempoExpression(dirContentNode.value, this.placement, this.staffNumber, this.soundTempo, this.currentMultiTempoExpression);
-                this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, "");
-            } else if (!isDynamicInstruction) {
-                this.interpretWords(dirContentNode, currentMeasure, timestampFraction);
+            dirContentNode = dirNode.element("wedge");
+            if (dirContentNode) {
+                this.interpretWedge(directionNode, dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber);
+                continue;
             }
-            return;
-        }
 
-        dirContentNode = dirNode.element("wedge");
-        if (dirContentNode) {
-            this.interpretWedge(directionNode, dirContentNode, currentMeasure, inSourceMeasurePreviousFraction, currentMeasure.MeasureNumber);
-            return;
-        }
-
-        dirContentNode = dirNode.element("rehearsal");
-        if (dirContentNode) {
-            this.interpretRehearsalMark(dirContentNode, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber);
-            return;
+            dirContentNode = dirNode.element("rehearsal");
+            if (dirContentNode) {
+                this.interpretRehearsalMark(dirContentNode, currentMeasure, inSourceMeasureCurrentFraction, currentMeasure.MeasureNumber);
+                continue;
+            }
         }
     }
     /** Usually called at end of last measure. */
@@ -299,10 +292,10 @@ export class ExpressionReader {
                 log.debug("ExpressionReader.addOctaveShift", errorMsg, ex);
             }
         }
-        const directionTypeNode: IXmlElement = directionNode.element("direction-type");
-        if (directionTypeNode) {
+        const directionTypeNodes: IXmlElement[] = directionNode.elements("direction-type");
+        const placement: PlacementEnum = this.readPlacement(directionNode);
+        for (const directionTypeNode of directionTypeNodes) {
             const octaveShiftNode: IXmlElement = directionTypeNode.element("octave-shift");
-            const placement: PlacementEnum = this.readPlacement(directionNode);
             // if (placement === PlacementEnum.NotYetDefined && this.staffNumber === 1) {
             //     placement = PlacementEnum.Above;
             // }
@@ -328,19 +321,44 @@ export class ExpressionReader {
                         if (type === "up" || type === "down") { // unfortunately not always given in MusicXML (e.g. Musescore 3.6.2) even though required
                             const octaveShift: OctaveShift = new OctaveShift(type, octave);
                             octaveShift.StaffNumber = octaveStaffNumber;
+                            octaveShift.numberXml = numberXml;
                             this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
                                 currentMeasure, numberXml);
                             this.getMultiExpression.OctaveShiftStart = octaveShift;
                             octaveShift.ParentStartMultiExpression = this.getMultiExpression;
-                            this.openOctaveShift = octaveShift;
-                        } else if (type === "stop") {
-                            if (this.openOctaveShift) {
+                            this.openOctaveShifts.set(numberXml, octaveShift);
+                            // Check if the matching stop was already encountered (stop before start due to voice/backup ordering)
+                            const pendingStop: {measure: SourceMeasure, endTimestamp: Fraction} =
+                                this.pendingOctaveShiftStops.get(numberXml);
+                            if (pendingStop) {
+                                this.pendingOctaveShiftStops.delete(numberXml);
                                 this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
-                                    currentMeasure, this.openOctaveShift.numberXml, endTimestamp);
+                                    pendingStop.measure, numberXml, pendingStop.endTimestamp);
+                                this.getMultiExpression.OctaveShiftEnd = octaveShift;
+                                octaveShift.ParentEndMultiExpression = this.getMultiExpression;
+                                this.openOctaveShifts.delete(numberXml);
+                            }
+                        } else if (type === "stop") {
+                            const matchingShift: OctaveShift = this.openOctaveShifts.get(numberXml);
+                            if (matchingShift) {
+                                this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
+                                    currentMeasure, matchingShift.numberXml, endTimestamp);
                                 const octaveShiftStartExpression: MultiExpression = this.getMultiExpression;
-                                octaveShiftStartExpression.OctaveShiftEnd = this.openOctaveShift;
-                                this.openOctaveShift.ParentEndMultiExpression = this.getMultiExpression;
-                                this.openOctaveShift = undefined;
+                                octaveShiftStartExpression.OctaveShiftEnd = matchingShift;
+                                matchingShift.ParentEndMultiExpression = this.getMultiExpression;
+                                this.openOctaveShifts.delete(numberXml);
+                            } else {
+                                // Stop arrived before its matching start (e.g. due to voice/backup ordering in MusicXML).
+                                // Store it so it can be matched when the start is encountered later.
+                                // Use directionTimestamp stepped back by one division to get an inclusive end (notes at end timestamp are included),
+                                // since directionTimestamp (= currentFraction) is an exclusive boundary and
+                                // endTimestamp (= previousFraction) refers to the wrong voice's timeline.
+                                const inclusiveEnd: Fraction = Fraction.minus(
+                                    this.directionTimestamp, new Fraction(1, 4 * this.divisions));
+                                this.pendingOctaveShiftStops.set(numberXml, {
+                                    measure: currentMeasure,
+                                    endTimestamp: inclusiveEnd
+                                });
                             }
                         } // TODO handle type === "continue"?
                         else if (!type) {
@@ -356,10 +374,11 @@ export class ExpressionReader {
         }
     }
     public addPedalMarking(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction): void {
-        const directionTypeNode: IXmlElement = directionNode.element("direction-type");
-        if (directionTypeNode) {
+        const directionTypeNodes: IXmlElement[] = directionNode.elements("direction-type");
+        for (const directionTypeNode of directionTypeNodes) {
             const pedalNode: IXmlElement = directionTypeNode.element("pedal");
-            if (pedalNode !== undefined && pedalNode.hasAttributes) {
+            if (!pedalNode) { continue; }
+            if (pedalNode.hasAttributes) {
                 let sign: boolean = false, line: boolean = false;
                 try {
                     if (pedalNode.attribute("line")?.value === "yes") {
@@ -522,7 +541,8 @@ export class ExpressionReader {
                 // addExpression unnecessary now?:
                 //const multiExpression = this.getMultiExpression(ExpressionType.InstantaneousDynamic, numberXml);
                 //multiExpression.addExpression(instantaneousDynamicExpression, "");
-                this.initialize();
+                //this.initialize(); this is unnecessary, also done at the beginning of readExpressionParameters().
+                //  initialize also resets this.placement to NotYetDefined, would be an issue for multiple direction-type nodes in one direction node.
                 if (this.activeInstantaneousDynamic) {
                     this.activeInstantaneousDynamic.DynEnum = instantaneousDynamicExpression.DynEnum;
                 } else {
@@ -755,8 +775,9 @@ export class ExpressionReader {
                                        fontStyle: FontStyles,
                                        fontColor: string,
                                        defaultYXml: number = undefined): boolean {
-        if (InstantaneousTempoExpression.isInputStringInstantaneousTempo(stringTrimmed) ||
-            ContinuousTempoExpression.isInputStringContinuousTempo(stringTrimmed)) {
+        const isInstantaneousTempo: boolean = InstantaneousTempoExpression.isInputStringInstantaneousTempo(stringTrimmed);
+        const isContinuousTempo: boolean = ContinuousTempoExpression.isInputStringContinuousTempo(stringTrimmed);
+        if (isInstantaneousTempo || isContinuousTempo) {
             // first check if there is already a tempo expression with the same function
             if (currentMeasure.TempoExpressions.length > 0) {
                 for (let idx: number = 0, len: number = currentMeasure.TempoExpressions.length; idx < len; ++idx) {
@@ -770,7 +791,7 @@ export class ExpressionReader {
             }
             this.createNewTempoExpressionIfNeeded(currentMeasure); // TODO process fontStyle? (also for other expressions)
             this.currentMultiTempoExpression.CombinedExpressionsText = inputString;
-            if (InstantaneousTempoExpression.isInputStringInstantaneousTempo(stringTrimmed)) {
+            if (isInstantaneousTempo) {
                 const instantaneousTempoExpression: InstantaneousTempoExpression = new InstantaneousTempoExpression(  stringTrimmed,
                                                                                                                       this.placement,
                                                                                                                       this.staffNumber,
@@ -780,7 +801,7 @@ export class ExpressionReader {
                 this.currentMultiTempoExpression.addExpression(instantaneousTempoExpression, prefix);
                 return true;
             }
-            if (ContinuousTempoExpression.isInputStringContinuousTempo(stringTrimmed)) {
+            if (isContinuousTempo) {
                 const continuousTempoExpression: ContinuousTempoExpression = new ContinuousTempoExpression(
                     stringTrimmed,
                     this.placement,
@@ -863,7 +884,7 @@ export class ExpressionReader {
                 }
             }
         }
-        let textAlignment: TextAlignmentEnum = TextAlignmentEnum.CenterBottom;
+        let textAlignment: TextAlignmentEnum = this.musicSheet.Rules.UnknownExpressionTextAlignment;
         if (this.musicSheet.Rules.CompactMode) {
             textAlignment = TextAlignmentEnum.LeftBottom;
         }
@@ -872,6 +893,7 @@ export class ExpressionReader {
         unknownExpression.fontStyle = fontStyle;
         unknownExpression.ColorXML = fontColor;
         unknownExpression.defaultYXml = defaultYXml;
+        unknownExpression.parentMeasure = currentMeasure;
         unknownMultiExpression.addExpression(unknownExpression, prefix);
         return false;
     }

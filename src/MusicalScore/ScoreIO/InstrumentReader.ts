@@ -363,8 +363,10 @@ export class InstrumentReader {
             || (isGraceNote && !isChord)
             || (!isGraceNote && lastNoteWasGrace)
           ) {
-            this.currentVoiceGenerator.createVoiceEntry(musicTimestamp, this.currentStaffEntry, !restNote && !isGraceNote,
+            this.currentVoiceGenerator.createVoiceEntry(musicTimestamp, this.currentStaffEntry, !isGraceNote,
                                                         isGraceNote, graceNoteSlash, graceSlur);
+            // we previously excluded rest notes from a voice's voice entry (!restNote && !isGraceNote),
+            //   but there seems to be no reason to. Rest notes also belong to a voice line. See #1612
           }
           if (!isGraceNote && !isChord) {
             previousFraction = currentFraction.clone();
@@ -434,7 +436,8 @@ export class InstrumentReader {
             previousFraction = new Fraction(0, 1);
           }
         } else if (xmlNode.name === "direction") {
-          const directionTypeNode: IXmlElement = xmlNode.element("direction-type");
+          const directionTypeNodes: IXmlElement[] = xmlNode.elements("direction-type");
+          const directionTypeNode: IXmlElement = directionTypeNodes[0]; // kept for repetition handler
           // (*) MetronomeReader.readMetronomeInstructions(xmlNode, this.musicSheet, this.currentXmlMeasureIndex);
           let relativePositionInMeasure: number = Math.min(1, currentFraction.RealValue);
           if (this.activeRhythm !== undefined && this.activeRhythm.Rhythm) {
@@ -452,13 +455,13 @@ export class InstrumentReader {
              expressionReader = this.expressionReaders[staffIndex];
            }
            if (expressionReader) {
-             if (directionTypeNode.element("octave-shift")) {
+             if (directionTypeNodes.some(dt => dt.element("octave-shift"))) {
                expressionReader.readExpressionParameters(
                  xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
                );
                expressionReader.addOctaveShift(xmlNode, this.currentMeasure, previousFraction.clone());
              }
-             if (directionTypeNode.element("pedal")) {
+             if (directionTypeNodes.some(dt => dt.element("pedal"))) {
               expressionReader.readExpressionParameters(
                 xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
               );
@@ -591,17 +594,19 @@ export class InstrumentReader {
    *  @return color in Vexflow format #[A]RGB or undefined for invalid xmlColorString
    */
   public parseXmlColor(xmlColorString: string): string {
-    if (!xmlColorString) {
-      return undefined;
-    }
+    return xmlColorString;
+    // previous implementation:
+    // if (!xmlColorString) {
+    //   return undefined;
+    // }
 
-    if (xmlColorString.length === 7) { // #RGB
-      return xmlColorString;
-    } else if (xmlColorString.length === 9) { // #ARGB
-      return "#" + xmlColorString.substr(3); // cut away alpha channel
-    } else {
-      return undefined; // invalid xml color
-    }
+    // if (xmlColorString.length === 7) { // #RGB
+    //   return xmlColorString;
+    // } else if (xmlColorString.length === 9) { // #ARGB
+    //   return "#" + xmlColorString.substr(3); // cut away alpha channel // why?
+    // } else {
+    //   return undefined; // invalid xml color
+    // }
   }
 
   public doCalculationsAfterDurationHasBeenSet(): void {
