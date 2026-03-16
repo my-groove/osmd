@@ -294,17 +294,36 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * @param rhythm
      */
     public addRhythmAtBegin(rhythm: RhythmInstruction): void {
+        const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
+        
+        // Adjust time signature positioning for tab staves to be properly centered
+        if (this.isTabMeasure && this.ParentStaff) {
+            const numLines: number = this.ParentStaff.StafflineCount;
+            if (numLines === 4) {
+                // 4-line bass tab: center between lines 1 and 2
+                (timeSig as any).topLine = 1;
+                (timeSig as any).bottomLine = 3;
+            } else if (numLines === 6) {
+                // 6-line guitar tab: center between lines 2 and 3
+                (timeSig as any).topLine = 2;
+                (timeSig as any).bottomLine = 4;
+            }
+        }
+        
         if (this.isTabMeasure && !this.rules.TabTimeSignatureRendered && !this.rules.TabTimeSignatureSpacingAdded) {
-            return;
+            this.stave.addModifier(
+                timeSig,
+                VF.StaveModifier.Position.BELOW
+            );
             // This will ignore time signatures completely, so for non-tab-only scores, vertical x-alignment will be prevented.
             //   If we want to x-align the startX / note startX, just not rendering the modifier is not enough.
             //   For tab-only scores, this is more compact though.
+        } else {
+            this.stave.addModifier(
+                timeSig,
+                VF.StaveModifier.Position.BEGIN
+            );
         }
-        const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
-        this.stave.addModifier(
-            timeSig,
-            VF.StaveModifier.Position.BEGIN
-        );
         if (!this.ShowTimeSignature ||
             this.isTabMeasure && !this.rules.TabTimeSignatureRendered) {
             // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found
