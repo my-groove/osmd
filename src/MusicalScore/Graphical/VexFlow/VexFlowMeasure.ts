@@ -294,17 +294,21 @@ export class VexFlowMeasure extends GraphicalMeasure {
      * @param rhythm
      */
     public addRhythmAtBegin(rhythm: RhythmInstruction): void {
+        const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
         if (this.isTabMeasure && !this.rules.TabTimeSignatureRendered && !this.rules.TabTimeSignatureSpacingAdded) {
-            return;
+            this.stave.addModifier(
+                timeSig,
+                VF.StaveModifier.Position.BELOW
+            );
             // This will ignore time signatures completely, so for non-tab-only scores, vertical x-alignment will be prevented.
             //   If we want to x-align the startX / note startX, just not rendering the modifier is not enough.
             //   For tab-only scores, this is more compact though.
+        } else {
+            this.stave.addModifier(
+                timeSig,
+                VF.StaveModifier.Position.BEGIN
+            );
         }
-        const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
-        this.stave.addModifier(
-            timeSig,
-            VF.StaveModifier.Position.BEGIN
-        );
         if (!this.ShowTimeSignature ||
             this.isTabMeasure && !this.rules.TabTimeSignatureRendered) {
             // extends Element is missing from class StaveModifier in DefinitelyTyped definitions, so setStyle isn't found

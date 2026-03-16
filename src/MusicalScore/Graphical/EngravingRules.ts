@@ -723,7 +723,7 @@ export class EngravingRules {
         this.TabBeamsRendered = true;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
-        this.TabTimeSignatureRendered = false; // standard not to render for tab scores
+        this.TabTimeSignatureRendered = true; // standard not to render for tab scores
         this.TabTimeSignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabFingeringsRendered = false; // tabs usually don't show fingering. This can also be duplicated when you have a classical+tab score.
         this.TabUseXNoteheadShapeForTabNote = true;
