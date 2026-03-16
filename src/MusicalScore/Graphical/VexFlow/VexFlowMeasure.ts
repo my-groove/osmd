@@ -295,6 +295,21 @@ export class VexFlowMeasure extends GraphicalMeasure {
      */
     public addRhythmAtBegin(rhythm: RhythmInstruction): void {
         const timeSig: VF.TimeSignature = VexFlowConverter.TimeSignature(rhythm);
+        
+        // Adjust time signature positioning for tab staves to be properly centered
+        if (this.isTabMeasure && this.ParentStaff) {
+            const numLines: number = this.ParentStaff.StafflineCount;
+            if (numLines === 4) {
+                // 4-line bass tab: center between lines 1 and 2
+                (timeSig as any).topLine = 1;
+                (timeSig as any).bottomLine = 3;
+            } else if (numLines === 6) {
+                // 6-line guitar tab: center between lines 2 and 3
+                (timeSig as any).topLine = 2;
+                (timeSig as any).bottomLine = 4;
+            }
+        }
+        
         if (this.isTabMeasure && !this.rules.TabTimeSignatureRendered && !this.rules.TabTimeSignatureSpacingAdded) {
             this.stave.addModifier(
                 timeSig,
