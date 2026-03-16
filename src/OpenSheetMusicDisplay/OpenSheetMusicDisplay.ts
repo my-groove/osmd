@@ -9,7 +9,7 @@ import { SvgVexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/SvgVexFlo
 import { CanvasVexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/CanvasVexFlowBackend";
 import { MusicSheet } from "./../MusicalScore/MusicSheet";
 import { Cursor } from "./Cursor";
-import { MXLHelper } from "../Common/FileIO/Mxl";
+import { MXLFile, MXLHelper } from "../Common/FileIO/Mxl";
 import { AJAX } from "./AJAX";
 import log from "loglevel";
 import { DrawingParameters } from "../MusicalScore/Graphical/DrawingParameters";
@@ -24,6 +24,7 @@ import { GraphicalMusicPage } from "../MusicalScore/Graphical/GraphicalMusicPage
 import { MusicPartManagerIterator } from "../MusicalScore/MusicParts/MusicPartManagerIterator";
 import { ITransposeCalculator } from "../MusicalScore/Interfaces/ITransposeCalculator";
 import { NoteEnum } from "../Common/DataObjects/Pitch";
+import { TemposCalculator } from "../MusicalScore/ScoreIO/MusicSymbolModules/TemposCalculator";
 
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
@@ -31,7 +32,7 @@ import { NoteEnum } from "../Common/DataObjects/Pitch";
  * After the constructor, use load() and render() to load and render a MusicXML file.
  */
 export class OpenSheetMusicDisplay {
-    protected version: string = "1.9.0-dev"; // getter: this.Version
+    protected version: string = "1.9.7-dev"; // getter: this.Version
     // at release, bump version and change to -release, afterwards to -dev again
 
     /**
@@ -100,16 +101,33 @@ export class OpenSheetMusicDisplay {
 
     /**
      * Load a MusicXML file
-     * @param content is either the url of a file, or the root node of a MusicXML document, or the string content of a .xml/.mxl file
+     * @param content is either the url of a file, or the root node of a MusicXML document,
+     *   or the string content of a .xml/.mxl file, or a file blob.
      * @param tempTitle is used as the title for the piece if there is no title in the XML.
      */
-    public load(content: string | Document, tempTitle: string = "Untitled Score"): Promise<{}> {
+    public load(content: string | Document | Blob, tempTitle: string = "Untitled Score"): Promise<{}> {
         // Warning! This function is asynchronous! No error handling is done here.
         this.reset();
-        //console.log("typeof content: " + typeof content);
-        if (typeof content === "string") {
+        const self: OpenSheetMusicDisplay = this;
+        if (content instanceof Blob) {
+            const mxlFile: MXLFile = new MXLFile(content);
+            // check if this is a zip / mxl file
+            return mxlFile.tryUnzip().then(() => {
+                if (mxlFile.unzipSuccessful) {
+                    return mxlFile.getXmlString().then((xmlString) => {
+                        return self.load(xmlString);
+                    });
+                } else {
+                    // not a zip
+                    if (content instanceof Blob) { // always true. unfortunately need to check again for linter
+                        return content.text().then((blobString) => {
+                            return self.load(blobString);
+                        });
+                    }
+                }
+            });
+        } else if (typeof content === "string") {
             const str: string = <string>content;
-            const self: OpenSheetMusicDisplay = this;
             // console.log("substring: " + str.substr(0, 5));
             if (str.startsWith("\x50\x4b\x03\x04")) {
                 log.debug("[OSMD] This is a zip file, unpack it first: " + str);
@@ -173,7 +191,8 @@ export class OpenSheetMusicDisplay {
             return Promise.reject(new Error("OpenSheetMusicDisplay: Document is not a valid 'partwise' MusicXML"));
         }
         const score: IXmlElement = new IXmlElement(scorePartwiseElement);
-        const reader: MusicSheetReader = new MusicSheetReader(undefined, this.rules);
+        const temposCalculator: TemposCalculator = new TemposCalculator();
+        const reader: MusicSheetReader = new MusicSheetReader([temposCalculator], this.rules);
         this.sheet = reader.createMusicSheet(score, tempTitle);
         if (this.sheet === undefined) {
             // error loading sheet, probably already logged, do nothing
@@ -209,7 +228,7 @@ export class OpenSheetMusicDisplay {
     /** Render the loaded music sheet to the container. */
     public render(): void {
         if (!this.graphic) {
-            throw new Error("OSMD: Before render, please load a MusicXML file");
+            throw new Error("OSMD: load() needs to be called before render()");
         }
         this.drawer?.clear(); // clear canvas before setting width
         // this.graphic.GetCalculator.clearSystemsAndMeasures(); // maybe?

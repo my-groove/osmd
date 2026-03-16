@@ -142,7 +142,9 @@ export class EngravingRules {
     public BetweenDotsDistance: number;
     public OrnamentAccidentalScalingFactor: number;
     public ChordSymbolTextHeight: number;
-    public ChordSymbolTextAlignment: TextAlignmentEnum;
+    public ChordSymbolTextAlignmentTop: TextAlignmentEnum;
+    public ChordSymbolTextAlignmentBottom: TextAlignmentEnum;
+    public ChordSymbolBottomMargin: number;
     public ChordSymbolRelativeXOffset: number;
     /** Additional x-shift for short chord symbols (e.g. C, but not Eb/7), to appear more centered. */
     public ChordSymbolExtraXShiftForShortChordSymbols: number;
@@ -179,6 +181,8 @@ export class EngravingRules {
     public MeasureNumberLabelXOffset: number;
     /** Whether tuplets should display ratio (3:2 instead of 3 for triplet). Default false. */
     public TupletsRatioed: boolean;
+    /** Whether to show a ratio when the XML says "show-number: both". Otherwise uses the default TupletsRatioed. */
+    public TupletsRatioedUseXMLValue: boolean;
     /** Whether tuplets (except triplets) should be bracketed (e.g. |--5--| instead of 5). Default false.
      * Note that this doesn't affect triplets (|--3--|), which have their own setting TripletsBracketed.
      * If false, only tuplets given as bracketed in XML (bracket="yes") will be bracketed.
@@ -239,7 +243,16 @@ export class EngravingRules {
     public RepetitionEndingLabelYOffset: number;
     public RepetitionEndingLineYLowerOffset: number;
     public RepetitionEndingLineYUpperOffset: number;
+    /** Whether the cursor should ignore / skip repetitions (alternative name: SkipRepetitions). False by default */
+    public CursorIgnoreRepetitions: boolean;
     public VoltaOffset: number;
+    /** X offset applied after label was moved to not overflow the staffline to the left.
+     * Without this offset, simply removing the overflow is usually too strict, moving it too far unnecessarily.
+     * e.g. see Beethoven Geliebte sample ("Ziemlich langsam")
+     */
+    public LabelXOffsetForStafflineLeftOverflowCheck: number;
+    public TempoExpressionTextAlignment: TextAlignmentEnum;
+    public UnknownExpressionTextAlignment: TextAlignmentEnum;
     /** Default alignment of lyrics.
      * Left alignments will extend text to the right of the bounding box,
      * which facilitates spacing by extending measure width.
@@ -458,6 +471,7 @@ export class EngravingRules {
     public RenderClefsAtBeginningOfStaffline: boolean;
     public RenderKeySignatures: boolean;
     public RenderTimeSignatures: boolean;
+    public RenderFirstTempoExpression: boolean;
     public RenderPedals: boolean;
     public DynamicExpressionMaxDistance: number;
     public DynamicExpressionSpacer: number;
@@ -535,6 +549,10 @@ export class EngravingRules {
     public SkyBottomLineWebGLMinMeasures: number;
     /** Whether to always set preferred backend (WebGL or Plain) automatically, depending on browser and number of measures. */
     public AlwaysSetPreferredSkyBottomLineBackendAutomatically: boolean;
+
+    // Playback settings
+    /** Currently only used in audio player */
+    public UseInterpolatedTempoForAccelerandoEtc: boolean;
 
     constructor() {
         this.loadDefaultValues();
@@ -671,7 +689,9 @@ export class EngravingRules {
         this.BetweenDotsDistance = 0.8;
         this.OrnamentAccidentalScalingFactor = 0.65;
         this.ChordSymbolTextHeight = 2.0;
-        this.ChordSymbolTextAlignment = TextAlignmentEnum.LeftBottom;
+        this.ChordSymbolTextAlignmentTop = TextAlignmentEnum.LeftBottom;
+        this.ChordSymbolTextAlignmentBottom = TextAlignmentEnum.LeftTop;
+        this.ChordSymbolBottomMargin = 0.6;
         this.ChordSymbolRelativeXOffset = -1.0;
         this.ChordSymbolExtraXShiftForShortChordSymbols = 0.3; // also see LyricsExtraXShiftForShortLyrics, same principle
         this.ChordSymbolExtraXShiftWidthThreshold = 2.0;
@@ -704,6 +724,7 @@ export class EngravingRules {
         this.MeasureNumberLabelOffset = 2;
         this.MeasureNumberLabelXOffset = -0.5;
         this.TupletsRatioed = false;
+        this.TupletsRatioedUseXMLValue = true;
         this.TupletsBracketed = false;
         this.TripletsBracketed = false; // special setting for triplets, overrides tuplet setting (for triplets only)
         this.TupletsBracketedUseXMLValue = true;
@@ -773,7 +794,13 @@ export class EngravingRules {
         this.RepetitionEndingLabelYOffset = 0.3;
         this.RepetitionEndingLineYLowerOffset = 0.5;
         this.RepetitionEndingLineYUpperOffset = 0.3;
+        this.CursorIgnoreRepetitions = false;
         this.VoltaOffset = 2.5;
+
+        // <direction><word> nodes text alignment
+        this.LabelXOffsetForStafflineLeftOverflowCheck = -1.2; // see Beethoven Geliebte, Function Test Brooke
+        this.TempoExpressionTextAlignment = TextAlignmentEnum.CenterBottom;
+        this.UnknownExpressionTextAlignment = TextAlignmentEnum.CenterBottom;
 
         // Lyrics
         this.LyricsAlignmentStandard = TextAlignmentEnum.LeftBottom; // CenterBottom and LeftBottom tested, spacing-optimized
@@ -912,6 +939,7 @@ export class EngravingRules {
         this.RenderClefsAtBeginningOfStaffline = true;
         this.RenderKeySignatures = true;
         this.RenderTimeSignatures = true;
+        this.RenderFirstTempoExpression = true;
         this.RenderPedals = true;
         this.ArticulationPlacementFromXML = true;
         this.BreathMarkDistance = 0.8;
@@ -953,6 +981,11 @@ export class EngravingRules {
         this.DisableWebGLInFirefox = true;
         this.DisableWebGLInSafariAndIOS = true;
         this.setPreferredSkyBottomLineBackendAutomatically();
+
+        // Playback
+        this.UseInterpolatedTempoForAccelerandoEtc = false; // wait for rit support etc. can also make
+        //   player features like syncing more difficult to implement.
+        //   Also, the end of an accelerando is usually not marked, so this makes it difficult to find an end timestamp.
 
         // this.populateDictionaries(); // these values aren't used currently
         try {

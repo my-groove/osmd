@@ -19,7 +19,8 @@ import { BoundingBox } from "../BoundingBox";
  *  Even though most of those functions aren't needed, apparently you can't remove the layoutStaffEntry function.
  */
 export class VexFlowMultiRestMeasure extends VexFlowMeasure {
-    private multiRestElement: any; // VexFlow: Element
+    public multiRestElement: any; // VexFlow: Element
+    public multiRestElementSVG: SVGGElement;
 
     constructor(staff: Staff, sourceMeasure: SourceMeasure = undefined, staffLine: StaffLine = undefined) {
         super(staff, sourceMeasure, staffLine);
@@ -38,7 +39,14 @@ export class VexFlowMultiRestMeasure extends VexFlowMeasure {
 
         this.resetLayout();
 
+        // padding_right doesn't work well for clefs at measure end. this.endInstructionsWidth is also not yet set correctly here.
+        // const padding_right: number = this.rules.MultipleRestMeasureElementPaddingRight * 10;
+        // padding is instead included in Vexflow in multimeasurerest.js:draw() (via VexFlowPatch), to not get too close to end repeat barline
+        // Also, we probably don't yet know whether we have an end measure clef here.
+        // see e.g. test/data/test_multiple_rest_measures_repeat_3_measures.musicxml, issue #1329
+
         this.multiRestElement = new VF.MultiMeasureRest(sourceMeasure.multipleRestMeasures, {
+            // padding_right: padding_right, // this overwrites any padding/endX calculations in Vexflow. doesn't work well for end clefs
             // number_line: 3
         });
     }
@@ -58,9 +66,12 @@ export class VexFlowMultiRestMeasure extends VexFlowMeasure {
         // Draw stave lines
         this.stave.setContext(ctx).draw();
 
+        this.multiRestElementSVG = ctx.openGroup("multirest") as SVGGElement;
         this.multiRestElement.setStave(this.stave);
         this.multiRestElement.setContext(ctx);
         this.multiRestElement.draw();
+        this.multiRestElement.id = `vf-multi${this.MeasureNumber}`;
+        ctx.closeGroup();
 
         ctx.closeGroup();
 
