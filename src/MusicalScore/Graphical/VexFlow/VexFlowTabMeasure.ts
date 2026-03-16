@@ -47,9 +47,11 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
             // create vex flow Notes:
             for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
                 if (gve.notes[0].sourceNote.isRest()) {
-                    const ghostNotes: VF.GhostNote[] = VexFlowConverter.GhostNotes(gve.notes[0].sourceNote.Length);
-                    (gve as VexFlowVoiceEntry).vfStaveNote = ghostNotes[0];
-                    (gve as VexFlowVoiceEntry).vfGhostNotes = ghostNotes; // we actually need multiple ghost notes sometimes, see #1062 Sep. 23 2021 comment
+                    // Use standard rest rendering for tab staves
+                    (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(gve);
+                    // const ghostNotes: VF.GhostNote[] = VexFlowConverter.GhostNotes(gve.notes[0].sourceNote.Length);
+                    // (gve as VexFlowVoiceEntry).vfGhostNotes = ghostNotes; // we actually need multiple ghost notes sometimes, see #1062 Sep. 23 2021 comment
+                    // (gve as VexFlowVoiceEntry).vfStaveNote = ghostNotes[0];
                 } else {
                     (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.CreateTabNote(gve);
                 }
