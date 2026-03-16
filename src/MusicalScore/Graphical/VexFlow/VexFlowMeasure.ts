@@ -651,74 +651,76 @@ export class VexFlowMeasure extends GraphicalMeasure {
             measureNode.id = `${this.MeasureNumber}`;
         }
 
-        // Draw stave lines
-        this.stave.setContext(ctx).draw();
-        // Draw all voices
-        for (const voiceID in this.vfVoices) {
-            if (this.vfVoices.hasOwnProperty(voiceID)) {
-                ctx.save();
-                this.vfVoices[voiceID].draw(ctx, this.stave);
-                ctx.restore();
-                // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
-                // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
-            }
-        }
-        // Draw beams
-        for (const voiceID in this.vfbeams) {
-            if (this.vfbeams.hasOwnProperty(voiceID)) {
-                for (const beam of this.vfbeams[voiceID]) {
-                    beam.setContext(ctx).draw();
+        try {
+            // Draw stave lines
+            this.stave.setContext(ctx).draw();
+            // Draw all voices
+            for (const voiceID in this.vfVoices) {
+                if (this.vfVoices.hasOwnProperty(voiceID)) {
+                    ctx.save();
+                    this.vfVoices[voiceID].draw(ctx, this.stave);
+                    ctx.restore();
+                    // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
+                    // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
                 }
             }
-        }
-        // Draw auto-generated beams from Beam.generateBeams()
-        if (this.autoVfBeams) {
-            for (const beam of this.autoVfBeams) {
-                beam.setContext(ctx).draw();
-            }
-        }
-        if (!this.isTabMeasure || this.rules.TupletNumbersInTabs) {
-            if (this.autoTupletVfBeams) {
-                for (const beam of this.autoTupletVfBeams) {
-                    beam.setContext(ctx).draw();
-                }
-            }
-            // Draw tuplets
-            for (const voiceID in this.vftuplets) {
-                if (this.vftuplets.hasOwnProperty(voiceID)) {
-                    for (let i: number = 0; i < this.tuplets[voiceID].length; i++) {
-                        const tuplet: Tuplet = this.tuplets[voiceID][i][0];
-                        const vftuplet: VF.Tuplet = this.vftuplets[voiceID][i];
-                        if (!vftuplet) { // see #1330, potentially to be investigated. why undefined?
-                            continue;
-                        }
-                        if (!tuplet.RenderTupletNumber ||
-                            tuplet.ShowNumberNoneGivenInXml && this.rules.TupletNumberUseShowNoneXMLValue) {
-                            // (vftuplet as any).numerator_glyphs_stored = [...(vftuplet as any).numerator_glyphs];
-                            // (vftuplet as any).numerator_glyphs = [];
-                            (vftuplet as any).RenderTupletNumber = false;
-                        } else {
-                            // issue with restoring glyphs (version without vexflowpatch): need to deep copy array, otherwise the reference is overwritten
-                            // (vftuplet as any).numerator_glyphs = [...(vftuplet as any).numerator_glyphs_stored];
-                            // (vftuplet as any).numerator_glyphs_stored = undefined;
-                            (vftuplet as any).RenderTupletNumber = true;
-                        }
-                        vftuplet.setContext(ctx).draw();
+            // Draw beams
+            for (const voiceID in this.vfbeams) {
+                if (this.vfbeams.hasOwnProperty(voiceID)) {
+                    for (const beam of this.vfbeams[voiceID]) {
+                        beam.setContext(ctx).draw();
                     }
                 }
             }
-        }
-
-        // Draw ties
-        for (const tie of this.vfTies) {
-            if (tie instanceof VF.TabSlide) {
-                continue; // rendered later in VexFlowMusicSheetDrawer.drawGlissandi(), when all staffline measures are rendered
+            // Draw auto-generated beams from Beam.generateBeams()
+            if (this.autoVfBeams) {
+                for (const beam of this.autoVfBeams) {
+                    beam.setContext(ctx).draw();
+                }
             }
-            tie.setContext(ctx);
-            tie.draw();
+            if (!this.isTabMeasure || this.rules.TupletNumbersInTabs) {
+                if (this.autoTupletVfBeams) {
+                    for (const beam of this.autoTupletVfBeams) {
+                        beam.setContext(ctx).draw();
+                    }
+                }
+                // Draw tuplets
+                for (const voiceID in this.vftuplets) {
+                    if (this.vftuplets.hasOwnProperty(voiceID)) {
+                        for (let i: number = 0; i < this.tuplets[voiceID].length; i++) {
+                            const tuplet: Tuplet = this.tuplets[voiceID][i][0];
+                            const vftuplet: VF.Tuplet = this.vftuplets[voiceID][i];
+                            if (!vftuplet) { // see #1330, potentially to be investigated. why undefined?
+                                continue;
+                            }
+                            if (!tuplet.RenderTupletNumber ||
+                                tuplet.ShowNumberNoneGivenInXml && this.rules.TupletNumberUseShowNoneXMLValue) {
+                                // (vftuplet as any).numerator_glyphs_stored = [...(vftuplet as any).numerator_glyphs];
+                                // (vftuplet as any).numerator_glyphs = [];
+                                (vftuplet as any).RenderTupletNumber = false;
+                            } else {
+                                // issue with restoring glyphs (version without vexflowpatch): need to deep copy array, otherwise the reference is overwritten
+                                // (vftuplet as any).numerator_glyphs = [...(vftuplet as any).numerator_glyphs_stored];
+                                // (vftuplet as any).numerator_glyphs_stored = undefined;
+                                (vftuplet as any).RenderTupletNumber = true;
+                            }
+                            vftuplet.setContext(ctx).draw();
+                        }
+                    }
+                }
+            }
+            // Draw ties
+            for (const tie of this.vfTies) {
+                if (tie instanceof VF.TabSlide) {
+                    continue; // rendered later in VexFlowMusicSheetDrawer.drawGlissandi(), when all staffline measures are rendered
+                }
+                tie.setContext(ctx);
+                tie.draw();
+            }
+        } catch (error) {
+            console.error("Error drawing measure " + this.MeasureNumber, error);
         }
         ctx.closeGroup(); // close measure group
-
         // Draw vertical lines
         for (const connector of this.connectors) {
             ctx.openGroup("connector");
