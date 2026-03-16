@@ -332,7 +332,7 @@ export abstract class MusicSheetDrawer {
         }
 
         const instruments: Instrument[] = this.graphicalMusicSheet.ParentMusicSheet.Instruments;
-        const instrumentsVisible: number = instruments.filter((instrument) => instrument.Visible).length;
+        const instrumentsVisible: number = instruments.filter((instrument) => instrument.isVisible()).length;
         for (const bracket of musicSystem.InstrumentBrackets) {
             this.drawInstrumentBrace(bracket, musicSystem);
         }
@@ -355,6 +355,7 @@ export abstract class MusicSheetDrawer {
         if (!this.leadSheet) {
             for (const measureNumberLabel of musicSystem.MeasureNumberLabels) {
                 measureNumberLabel.SVGNode = this.drawLabel(measureNumberLabel, <number>GraphicalLayers.Notes);
+                (measureNumberLabel.SVGNode as SVGGElement)?.classList?.add("measure-number");
             }
         }
         for (const staffLine of musicSystem.StaffLines) {

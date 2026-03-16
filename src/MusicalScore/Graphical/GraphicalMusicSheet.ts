@@ -856,7 +856,7 @@ export class GraphicalMusicSheet {
         try {
             for (let idx: number = 0, len: number = container.StaffEntries.length; idx < len; ++idx) {
                 const entry: GraphicalStaffEntry = container.StaffEntries[idx];
-                if (!entry || !entry.sourceStaffEntry.ParentStaff.ParentInstrument.Visible) {
+                if (!entry || !entry.sourceStaffEntry.ParentStaff.isVisible()) {
                     continue;
                 }
                 if (!staffEntry) {
@@ -885,7 +885,7 @@ export class GraphicalMusicSheet {
             const entries: GraphicalStaffEntry[] = this.verticalGraphicalStaffEntryContainers[i].StaffEntries;
             for (let idx: number = 0, len: number = entries.length; idx < len; ++idx) {
                 const entry: GraphicalStaffEntry = entries[idx];
-                if (entry && entry.sourceStaffEntry.ParentStaff.ParentInstrument.Visible) {
+                if (entry && entry.sourceStaffEntry.ParentStaff.isVisible()) {
                     return i;
                 }
             }
@@ -904,7 +904,7 @@ export class GraphicalMusicSheet {
             const entries: GraphicalStaffEntry[] = this.verticalGraphicalStaffEntryContainers[i].StaffEntries;
             for (let idx: number = 0, len: number = entries.length; idx < len; ++idx) {
                 const entry: GraphicalStaffEntry = entries[idx];
-                if (entry && entry.sourceStaffEntry.ParentStaff.ParentInstrument.Visible) {
+                if (entry && entry.sourceStaffEntry.ParentStaff.isVisible()) {
                     return i;
                 }
             }
@@ -920,7 +920,7 @@ export class GraphicalMusicSheet {
             foundEntry = this.getStaffEntry(i);
             if (foundEntry) {
                 if (searchOnlyVisibleEntries) {
-                    if (foundEntry.sourceStaffEntry.ParentStaff.ParentInstrument.Visible) {
+                    if (foundEntry.sourceStaffEntry.ParentStaff.isVisible()) {
                         return foundEntry;
                     }
                 } else {
@@ -938,7 +938,7 @@ export class GraphicalMusicSheet {
             foundEntry = this.getStaffEntry(i);
             if (foundEntry) {
                 if (returnOnlyVisibleEntries) {
-                    if (foundEntry.sourceStaffEntry.ParentStaff.ParentInstrument.Visible) {
+                    if (foundEntry.sourceStaffEntry.ParentStaff.isVisible()) {
                         return foundEntry;
                     }
                 } else {
@@ -1040,7 +1040,7 @@ export class GraphicalMusicSheet {
         let visibleInstrumentCount: number = 0;
         for (let idx: number = 0, len: number = this.musicSheet.Instruments.length; idx < len; ++idx) {
             const instrument: Instrument = this.musicSheet.Instruments[idx];
-            if (instrument.Visible === true) {
+            if (instrument.isVisible()) {
                 visibleInstrumentCount++;
             }
         }
