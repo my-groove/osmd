@@ -896,7 +896,14 @@ export class Beam extends Element {
     if (this.unbeamable) return;
 
     const notes = this.getNotes();
-    if (notes && notes.some(n => n.getAttribute("type") === "TabNote")) return;
+    // VexFlowPatch: Allow tab note beams to render if the first note has stems enabled
+    if (notes && notes.some(n => n.getAttribute("type") === "TabNote")) {
+      // Check if tab stems are enabled - if so, allow beams to render
+      const firstNote = notes[0];
+      if (!firstNote.hasStem() || !firstNote.render_options.draw_stem) {
+        return; // Skip beam rendering if stems are disabled
+      }
+    }
 
     if (!this.postFormatted) {
       this.postFormat();

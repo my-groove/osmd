@@ -1487,7 +1487,7 @@ export class VexFlowMeasure extends GraphicalMeasure {
     /**
      * Copy the stem directions chosen by VexFlow to the StemDirection variable of the graphical notes
      */
-    private setStemDirectionFromVexFlow(): void {
+    protected setStemDirectionFromVexFlow(): void {
         //if StemDirection was not set then read out what VexFlow has chosen
         for ( const vfStaffEntry of this.staffEntries ) {
             for ( const gVoiceEntry of vfStaffEntry.graphicalVoiceEntries) {

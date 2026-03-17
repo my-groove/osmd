@@ -1032,10 +1032,14 @@ export class VexFlowConverter {
             duration += "d";
         }
 
+        // VexFlowPatch: Enable stems for tab notes when TabBeamsRendered is true
+        // This allows beams and articulations to be rendered on tablature
+        const drawStem: boolean = rules.TabBeamsRendered;
+
         const vfnote: VF.TabNote = new VF.TabNote({
             duration: duration,
             positions: tabPositions,
-        });
+        }, drawStem);
         if (isXNotehead) {
             // (vfnote as any).render_options.fretScale = rules.TabXNoteheadScale; // doesn't work, is overwritten later
             (vfnote as any).render_options.scale = rules.TabXNoteheadScale; // VexFlowPatch
