@@ -1275,13 +1275,16 @@ export class VexFlowMeasure extends GraphicalMeasure {
                       let yOffset: number = 0;
                       if (this.isTabMeasure) {
                         yOffset = this.rules.TabTupletYOffsetBottom * 10;
-                        if (location === VF.Tuplet.LOCATION_TOP) {
-                            yOffset = this.rules.TabTupletYOffsetTop * -10;
-                            const firstNote: Note = tuplet.Notes[0][0];
-                            if (firstNote?.hasTabEffects()) {
-                                yOffset -= this.rules.TabTupletYOffsetEffects * 10;
-                            }
-                        }
+                        // Tab tuplets are always below, because above can interfere with beams and stems, and tab numbers are usually below the staff.
+                        // TODO make this an option?
+                        location = VF.Tuplet.LOCATION_BOTTOM;
+                        // if (location === VF.Tuplet.LOCATION_TOP) {
+                        //     yOffset = this.rules.TabTupletYOffsetTop * -10;
+                        //     const firstNote: Note = tuplet.Notes[0][0];
+                        //     if (firstNote?.hasTabEffects()) {
+                        //         yOffset -= this.rules.TabTupletYOffsetEffects * 10;
+                        //     }
+                        // }
                       }
                       const vftuplet: VF.Tuplet = new VF.Tuplet(tupletStaveNotes,
                         {

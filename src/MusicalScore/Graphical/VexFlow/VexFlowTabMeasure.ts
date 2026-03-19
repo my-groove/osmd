@@ -133,8 +133,8 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                 }
             }
         }
-        //this.createArticulations();
-        //this.createOrnaments();
+        // this.createArticulations();
+        // this.createOrnaments();
     }
 
      public addClefAtBegin(clef: ClefInstruction): void {
