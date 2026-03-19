@@ -655,7 +655,8 @@ export class GraphicalSlur extends GraphicalCurve {
             startY = Math.max(startY, staffLine.StaffHeight - 1.5);
             endY = Math.max(endY, staffLine.StaffHeight - 1.5);
         }
-
+        startX -= rules.SlurStemXOffset;
+        endX -= rules.SlurStemXOffset;
         return {startX, startY, endX, endY};
     }
 
