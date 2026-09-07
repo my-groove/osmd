@@ -41,11 +41,23 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
     }
 
     public graphicalMeasureCreatedCalculations(): void {
+        let graceSlur: boolean;
+        let graceGVoiceEntriesBefore: GraphicalVoiceEntry[] = [];
         for (let idx: number = 0, len: number = this.staffEntries.length; idx < len; ++idx) {
             const graphicalStaffEntry: VexFlowStaffEntry = (this.staffEntries[idx] as VexFlowStaffEntry);
+            graceSlur = false;
+            graceGVoiceEntriesBefore = [];
 
             // create vex flow Notes:
             for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
+                if (gve.parentVoiceEntry.IsGrace) {
+                    // save grace notes for the next non-grace note, same as in VexFlowMeasure.graphicalMeasureCreatedCalculations()
+                    graceGVoiceEntriesBefore.push(gve);
+                    if (!graceSlur) {
+                        graceSlur = gve.parentVoiceEntry.GraceSlur;
+                    }
+                    continue;
+                }
                 if (gve.notes[0].sourceNote.isRest()) {
                     // Use standard rest rendering for tab staves
                     (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(gve);
@@ -55,6 +67,34 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                 } else {
                     (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.CreateTabNote(gve);
                 }
+
+                if (graceGVoiceEntriesBefore.length > 0) {
+                    // add grace notes that came before this main note to a GraceNoteGroup in Vexflow, attached to the main note
+                    const graceNotes: VF.TabNote[] = [];
+                    for (const gveGrace of graceGVoiceEntriesBefore) {
+                        const vfTabNote: VF.TabNote = VexFlowConverter.CreateTabNote(gveGrace);
+                        (gveGrace as VexFlowVoiceEntry).vfStaveNote = vfTabNote;
+                        graceNotes.push(vfTabNote);
+                    }
+                    // GraceNoteGroup is typed for VF.GraceNote[] (which extends StaveNote in the type definitions),
+                    //   but at runtime it also supports VF.TabNote (see gracenotegroup.js's is_stavenote checks). Cast around the incomplete typing.
+                    const graceNoteGroup: VF.GraceNoteGroup = new VF.GraceNoteGroup(graceNotes as unknown as VF.GraceNote[], graceSlur);
+                    let xMargin: number = this.rules.GraceNoteGroupXMargin;
+                    if (graceNotes.length > 1) {
+                        xMargin /= 3; // prevent overlap. multiple grace notes end up closer to the main note.
+                    }
+                    (graceNoteGroup as any).spacing = xMargin * 10;
+                    // TabNote.addModifier() uses the base Note signature (modifier, index), unlike StaveNote's overridden (index, modifier).
+                    ((gve as VexFlowVoiceEntry).vfStaveNote as VF.TabNote).addModifier(graceNoteGroup, 0);
+                    graceGVoiceEntriesBefore = [];
+                }
+            }
+        }
+        // remaining grace notes at end of measure, turned into stand-alone grace notes:
+        if (graceGVoiceEntriesBefore.length > 0) {
+            for (const graceGve of graceGVoiceEntriesBefore) {
+                (graceGve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.CreateTabNote(graceGve);
+                graceGve.parentVoiceEntry.GraceAfterMainNote = true;
             }
         }
 

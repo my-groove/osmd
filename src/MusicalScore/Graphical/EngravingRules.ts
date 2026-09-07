@@ -232,6 +232,13 @@ export class EngravingRules {
     public TabUseXNoteheadShapeForTabNote: boolean;
     public TabUseXNoteheadAlternativeGlyph: boolean;
     public TabXNoteheadScale: number;
+    /** Scale factor for grace notes in tabs (fret numbers and stems), similar to VF.GraceNote.SCALE (0.66) for normal staves. */
+    public TabGraceNoteScale: number;
+    /** Some exporters (e.g. Sibelius via the Dolet MusicXML plugin) can't export guitar bends as a proper
+     *  MusicXML <bend> element and export them as a plain <slur> between two tab notes instead.
+     *  When true, a slur connecting two tab notes on the same string with a different (nearby) fret
+     *  is reinterpreted as a bend instead of being rendered as a plain slur curve. */
+    public TabSlursAsBends: boolean;
 
     public RepetitionAllowFirstMeasureBeginningRepeatBarline: boolean;
     public RepetitionEndingLabelHeight: number;
@@ -720,7 +727,7 @@ export class EngravingRules {
         this.TabTupletYOffsetTop = -3.5; // -3.5 is fine if you don't have effects like bends on top. Otherwise, e.g. -2 avoids overlaps.
         this.TabTupletYOffsetEffects = 1.5;
         this.TabTupletsBracketed = true;
-        this.TabBeamsRendered = true;
+        this.TabBeamsRendered = false;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabTimeSignatureRendered = true; // standard not to render for tab scores
@@ -729,6 +736,8 @@ export class EngravingRules {
         this.TabUseXNoteheadShapeForTabNote = true;
         this.TabUseXNoteheadAlternativeGlyph = true;
         this.TabXNoteheadScale = 0.9;
+        this.TabGraceNoteScale = 0.8; // matches VF.GraceNote.SCALE, used for grace notes on normal staves
+        this.TabSlursAsBends = true;
 
         // Slur and Tie variables
         this.SlurPlacementFromXML = true;

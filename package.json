@@ -1,6 +1,6 @@
 {
   "name": "@my-groove/opensheetmusicdisplay",
-  "version": "1.9.1-mg4",
+  "version": "1.9.2-mg4",
   "description": "An open source JavaScript engine for displaying MusicXML based on VexFlow.",
   "main": "build/dist/src/index.js",
   "types": "build/dist/src/index.d.ts",

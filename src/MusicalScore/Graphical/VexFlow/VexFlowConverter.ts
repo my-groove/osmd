@@ -1000,22 +1000,40 @@ export class VexFlowConverter {
                 (tabPosition as any).fret = "x";
                 isXNotehead = true;
             }
+            if (!note.sourceNote.PrintObject) {
+                // e.g. the target/sustain note of an up-bend synthesized from a slur (SlurReader.isTabBendExportedAsSlur):
+                //   standard tab notation shows only the starting fret with a bend arrow, not a second fret number.
+                //   blank the glyph text while keeping this a real TabNote, so duration/grace-note-attachment/etc. stay intact.
+                (tabPosition as any).fret = "";
+            } else if (note.sourceNote.Notehead?.Parenthesis) {
+                // e.g. the landing note of a bend release synthesized from a slur: shown, but in parentheses,
+                //   since it's not a new pluck (also used for a real XML <notehead parentheses="yes">).
+                (tabPosition as any).fret = `(${tabPosition.fret})`;
+            }
             tabPositions.push(tabPosition);
             if (tabNote.BendArray) {
                 tabNote.BendArray.forEach( function( bend: {bendalter: number, direction: string} ): void {
+                    // bend.bendalter is a semitone delta (1 fret = 1 semitone), whether it came from a real
+                    //   XML <bend-alter> (VoiceGenerator) or a synthesized slur-as-bend (SlurReader).
+                    const wholeSteps: number = Math.floor(bend.bendalter / 2);
+                    const hasHalfStep: boolean = bend.bendalter % 2 !== 0;
                     let phraseText: string;
-                    const phraseStep: number = bend.bendalter - tabPosition.fret;
-                    if (phraseStep > 1) {
+                    if (wholeSteps === 0) {
+                        phraseText = hasHalfStep ? "1/2" : "1/4";
+                    } else if (wholeSteps === 1 && !hasHalfStep) {
                         phraseText = "Full";
-                    } else if (phraseStep === 1) {
-                        phraseText = "1/2";
                     } else {
-                        phraseText = "1/4";
+                        phraseText = hasHalfStep ? `${wholeSteps} 1/2` : `${wholeSteps}`;
                     }
                     if (bend.direction === "up") {
                         tabPhrases.push({type: VF.Bend.UP, text: phraseText, width: 10});
                     } else {
-                        tabPhrases.push({type: VF.Bend.DOWN, text: phraseText, width: 10});
+                        // a release: render a standalone downward curve, not VexFlow's legacy release=true
+                        //   path, which always fabricates a preceding up-arc (see vexflow's bend.js constructor).
+                        //   leave the text blank: standard tab notation doesn't label the release curve
+                        //   (VexFlow's own default release phrase omits text too, see bend.js constructor),
+                        //   and an empty label also keeps updateWidth() from padding out the note spacing.
+                        tabPhrases.push({type: VF.Bend.DOWN, text: "", width: 10});
                     }
                 });
             }
@@ -1040,10 +1058,23 @@ export class VexFlowConverter {
             duration: duration,
             positions: tabPositions,
         }, drawStem);
-        if (isXNotehead) {
+        const isGrace: boolean = gve.parentVoiceEntry.IsGrace;
+        if (isXNotehead || isGrace) {
             // (vfnote as any).render_options.fretScale = rules.TabXNoteheadScale; // doesn't work, is overwritten later
-            (vfnote as any).render_options.scale = rules.TabXNoteheadScale; // VexFlowPatch
-            (vfnote as any).render_options.TabUseXNoteheadAlternativeGlyph = rules.TabUseXNoteheadAlternativeGlyph; // VexFlowPatch
+            const scale: number = (isXNotehead ? rules.TabXNoteheadScale : 1.0) * (isGrace ? rules.TabGraceNoteScale : 1.0);
+            (vfnote as any).render_options.scale = scale; // VexFlowPatch
+            if (isXNotehead) {
+                (vfnote as any).render_options.TabUseXNoteheadAlternativeGlyph = rules.TabUseXNoteheadAlternativeGlyph; // VexFlowPatch
+            }
+            if (isGrace) {
+                // multi-digit fret numbers are drawn as text with a fixed pt size (render_options.font),
+                //   not scaled by render_options.scale (see VexFlowPatch/src/tabnote.js drawPositions()/setStave()),
+                //   so we have to shrink the font size itself for grace notes.
+                const font: string = (vfnote as any).render_options.font;
+                const [fontSize, ...fontRest] = font.split(" ");
+                const scaledFontSize: number = parseFloat(fontSize) * rules.TabGraceNoteScale;
+                (vfnote as any).render_options.font = `${scaledFontSize}pt ${fontRest.join(" ")}`;
+            }
             vfnote.updateWidth(); // use .scale, update glyph
         }
         if (rules.UsePageBackgroundColorForTabNotes) {
@@ -1057,9 +1088,16 @@ export class VexFlowConverter {
 
         tabPhrases.forEach(function(phrase: { type: number, text: string, width: number }): void {
             if (phrase.type === VF.Bend.UP) {
-                vfnote.addModifier (new VF.Bend(phrase.text, false));
+                vfnote.addModifier (new VF.Bend(phrase.text));
             } else {
-                vfnote.addModifier (new VF.Bend(phrase.text, true));
+                // Build a DOWN-only phrase directly: VexFlow's legacy (text, release=true) constructor
+                //   always prepends a fabricated UP segment, which is wrong for a standalone release.
+                //   Don't set a `width` key on the phrase entry (the @types/vexflow phrase type requires one,
+                //   so cast around it): Bend.updateWidth() (vexflow/src/bend.js) only computes `draw_width`
+                //   (used for the actual curve/arrow coordinates) when the `width` key is absent entirely
+                //   ("'width' in bend"); with it present (even as undefined), draw_width stays undefined
+                //   and the curve silently fails to render (NaN coordinates).
+                vfnote.addModifier (new VF.Bend(undefined, undefined, [{type: VF.Bend.DOWN, text: phrase.text}] as any));
             }
         });
         if (tabVibrato) {
