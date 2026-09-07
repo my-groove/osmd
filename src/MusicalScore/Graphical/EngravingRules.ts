@@ -228,6 +228,8 @@ export class EngravingRules {
      */
     public TabTimeSignatureSpacingAdded: boolean;
     public TabFingeringsRendered: boolean;
+    /** Whether to render rests in tab staves. If false, rests still take up their normal duration/space, just invisible. */
+    public TabRestsRendered: boolean;
     /** Use an X in tabs when the note has an X notehead, e.g. in the staff above in the classical notes, instead of the fret number */
     public TabUseXNoteheadShapeForTabNote: boolean;
     public TabUseXNoteheadAlternativeGlyph: boolean;
@@ -650,7 +652,7 @@ export class EngravingRules {
         // GraceNote Variables
         this.GraceNoteScalingFactor = 0.6;
         this.GraceNoteXOffset = 0.2;
-        this.GraceNoteGroupXMargin = 0.0; // More than 0 leads to too much space in most cases.
+        this.GraceNoteGroupXMargin = -0.5; // More than 0 leads to too much space in most cases.
         //  see test_end_clef_measure. only potential 'tight' case: test_graceslash_simple
 
         // Wedge Variables
@@ -733,6 +735,7 @@ export class EngravingRules {
         this.TabTimeSignatureRendered = true; // standard not to render for tab scores
         this.TabTimeSignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabFingeringsRendered = false; // tabs usually don't show fingering. This can also be duplicated when you have a classical+tab score.
+        this.TabRestsRendered = false;
         this.TabUseXNoteheadShapeForTabNote = true;
         this.TabUseXNoteheadAlternativeGlyph = true;
         this.TabXNoteheadScale = 0.9;

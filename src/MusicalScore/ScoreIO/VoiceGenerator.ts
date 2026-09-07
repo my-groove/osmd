@@ -28,7 +28,7 @@ import { SlurReader } from "./MusicSymbolModules/SlurReader";
 import { Notehead } from "../VoiceData/Notehead";
 import { Arpeggio, ArpeggioType } from "../VoiceData/Arpeggio";
 import { NoteType, NoteTypeHandler } from "../VoiceData/NoteType";
-import { TabNote } from "../VoiceData/TabNote";
+import { TabNote, TabBend } from "../VoiceData/TabNote";
 import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 import { ReaderPluginManager } from "./ReaderPluginManager";
 import { Instrument } from "../Instrument";
@@ -474,7 +474,7 @@ export class VoiceGenerator {
     let note: Note = undefined;
     let stringNumber: number = -1; //1 to always recognize as valid tab note
     let fretNumber: number = -1; //0 to always recognize as valid tab note
-    const bends: {bendalter: number, direction: string}[] = [];
+    const bends: TabBend[] = [];
     // check for guitar tabs:
     const notationNode: IXmlElement = node.element("notations");
     if (notationNode) {

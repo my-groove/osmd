@@ -11,6 +11,10 @@ import { Glissando } from "../../VoiceData/Glissando";
 export class SlurReader {
     private musicSheet: MusicSheet;
     private openSlurDict: { [_: number]: Slur } = {};
+    // maps a synthesized up-bend's target note (the hidden peak note) to the note the bend started from,
+    //   so a subsequent release slur starting at that peak (see addSlur()) can attach its bend to the same
+    //   note as the up-bend instead of to the peak note, letting VexFlowConverter draw one connected curve.
+    private tabBendUpSourceNotes: Map<TabNote, TabNote> = new Map<TabNote, TabNote>();
     constructor(musicSheet: MusicSheet) {
         this.musicSheet = musicSheet;
     }
@@ -80,11 +84,23 @@ export class SlurReader {
                                         const startTabNote: TabNote = slurStartNote as TabNote;
                                         const endTabNote: TabNote = currentNote as TabNote;
                                         const bendsUp: boolean = endTabNote.FretNumber > startTabNote.FretNumber;
-                                        startTabNote.BendArray.push({
+                                        // if this is a release continuing from a synthesized up-bend (startTabNote is that
+                                        //   bend's hidden peak note), attach it to the note the up-bend itself started from,
+                                        //   so both bend steps end up on one note (see VexFlowConverter.CreateTabNote()),
+                                        //   which draws them as a single connected curve instead of two disjointed ones.
+                                        const bendUpSourceNote: TabNote = this.tabBendUpSourceNotes.get(startTabNote);
+                                        const isRedirectedRelease: boolean = !bendsUp && !!bendUpSourceNote;
+                                        const bendTargetNote: TabNote = isRedirectedRelease ? bendUpSourceNote : startTabNote;
+                                        bendTargetNote.BendArray.push({
                                             // semitone delta (1 fret = 1 semitone), consistent with the semitone value
                                             //   a real MusicXML <bend-alter> element would carry (see VoiceGenerator.addSingleNote()).
                                             bendalter: Math.abs(endTabNote.FretNumber - startTabNote.FretNumber),
                                             direction: bendsUp ? "up" : "down",
+                                            // endTabNote is where this step visually reaches whether or not it's
+                                            //   redirected: the (hidden) peak note for an up-bend, or the landing
+                                            //   note for a release (e.g. a grace note bending down into its main
+                                            //   note lands on endTabNote just as much as a redirected one does).
+                                            visualTargetNote: endTabNote,
                                         });
                                         if (bendsUp) {
                                             // standard tab notation shows only the starting fret with a bend arrow, not a second
@@ -92,6 +108,9 @@ export class SlurReader {
                                             //   duration (see the PrintObject check in VexFlowTabMeasure.graphicalMeasureCreatedCalculations()).
                                             //   a release (bend down) is the opposite: the landing fret is shown, not hidden.
                                             endTabNote.PrintObject = false;
+                                            this.tabBendUpSourceNotes.set(endTabNote, startTabNote);
+                                        } else if (bendUpSourceNote) {
+                                            this.tabBendUpSourceNotes.delete(startTabNote);
                                         }
                                         if (startTabNote.ParentVoiceEntry?.IsGrace) {
                                             // suppress the decorative grace-to-main-note tie (InstrumentReader.ts sets this

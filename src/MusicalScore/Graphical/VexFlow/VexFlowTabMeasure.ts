@@ -60,6 +60,12 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
                 }
                 if (gve.notes[0].sourceNote.isRest()) {
                     // Use standard rest rendering for tab staves
+                    if (!this.rules.TabRestsRendered) {
+                        // keep the rest's duration/spacing intact, just make it invisible.
+                        // setStyle() alone isn't enough, because VexFlowVoiceEntry.color() re-colors noteheads afterwards
+                        // (during MusicSheetCalculator.calculateMusicSystems()) unless PrintObject is false.
+                        gve.notes[0].sourceNote.PrintObject = false;
+                    }
                     (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(gve);
                     // const ghostNotes: VF.GhostNote[] = VexFlowConverter.GhostNotes(gve.notes[0].sourceNote.Length);
                     // (gve as VexFlowVoiceEntry).vfGhostNotes = ghostNotes; // we actually need multiple ghost notes sometimes, see #1062 Sep. 23 2021 comment
