@@ -241,6 +241,12 @@ export class EngravingRules {
      *  When true, a slur connecting two tab notes on the same string with a different (nearby) fret
      *  is reinterpreted as a bend instead of being rendered as a plain slur curve. */
     public TabSlursAsBends: boolean;
+    /** Extra horizontal padding (in VexFlow px/unit) pulling a tab slide line's start point further away
+     * from its start note (unlike VexFlow's own tie_spacing, which shifts both endpoints in the same
+     * direction). Increase this if slide lines overlap horizontally with the fret numbers. */
+    public TabSlideStartXShift: number;
+    /** Same as TabSlideStartXShift, but for the slide line's end point / end note. */
+    public TabSlideEndXShift: number;
 
     public RepetitionAllowFirstMeasureBeginningRepeatBarline: boolean;
     public RepetitionEndingLabelHeight: number;
@@ -741,6 +747,8 @@ export class EngravingRules {
         this.TabXNoteheadScale = 0.9;
         this.TabGraceNoteScale = 0.8; // matches VF.GraceNote.SCALE, used for grace notes on normal staves
         this.TabSlursAsBends = true;
+        this.TabSlideStartXShift = 0; // px pulling slide line start point away from the start fret number
+        this.TabSlideEndXShift = 0; // px pulling slide line end point away from the end fret number
 
         // Slur and Tie variables
         this.SlurPlacementFromXML = true;
