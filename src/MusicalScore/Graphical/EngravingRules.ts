@@ -228,10 +228,25 @@ export class EngravingRules {
      */
     public TabTimeSignatureSpacingAdded: boolean;
     public TabFingeringsRendered: boolean;
+    /** Whether to render rests in tab staves. If false, rests still take up their normal duration/space, just invisible. */
+    public TabRestsRendered: boolean;
     /** Use an X in tabs when the note has an X notehead, e.g. in the staff above in the classical notes, instead of the fret number */
     public TabUseXNoteheadShapeForTabNote: boolean;
     public TabUseXNoteheadAlternativeGlyph: boolean;
     public TabXNoteheadScale: number;
+    /** Scale factor for grace notes in tabs (fret numbers and stems), similar to VF.GraceNote.SCALE (0.66) for normal staves. */
+    public TabGraceNoteScale: number;
+    /** Some exporters (e.g. Sibelius via the Dolet MusicXML plugin) can't export guitar bends as a proper
+     *  MusicXML <bend> element and export them as a plain <slur> between two tab notes instead.
+     *  When true, a slur connecting two tab notes on the same string with a different (nearby) fret
+     *  is reinterpreted as a bend instead of being rendered as a plain slur curve. */
+    public TabSlursAsBends: boolean;
+    /** Extra horizontal padding (in VexFlow px/unit) pulling a tab slide line's start point further away
+     * from its start note (unlike VexFlow's own tie_spacing, which shifts both endpoints in the same
+     * direction). Increase this if slide lines overlap horizontally with the fret numbers. */
+    public TabSlideStartXShift: number;
+    /** Same as TabSlideStartXShift, but for the slide line's end point / end note. */
+    public TabSlideEndXShift: number;
 
     public RepetitionAllowFirstMeasureBeginningRepeatBarline: boolean;
     public RepetitionEndingLabelHeight: number;
@@ -643,7 +658,7 @@ export class EngravingRules {
         // GraceNote Variables
         this.GraceNoteScalingFactor = 0.6;
         this.GraceNoteXOffset = 0.2;
-        this.GraceNoteGroupXMargin = 0.0; // More than 0 leads to too much space in most cases.
+        this.GraceNoteGroupXMargin = -0.5; // More than 0 leads to too much space in most cases.
         //  see test_end_clef_measure. only potential 'tight' case: test_graceslash_simple
 
         // Wedge Variables
@@ -720,15 +735,20 @@ export class EngravingRules {
         this.TabTupletYOffsetTop = -3.5; // -3.5 is fine if you don't have effects like bends on top. Otherwise, e.g. -2 avoids overlaps.
         this.TabTupletYOffsetEffects = 1.5;
         this.TabTupletsBracketed = true;
-        this.TabBeamsRendered = true;
+        this.TabBeamsRendered = false;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabTimeSignatureRendered = true; // standard not to render for tab scores
         this.TabTimeSignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabFingeringsRendered = false; // tabs usually don't show fingering. This can also be duplicated when you have a classical+tab score.
+        this.TabRestsRendered = false;
         this.TabUseXNoteheadShapeForTabNote = true;
         this.TabUseXNoteheadAlternativeGlyph = true;
         this.TabXNoteheadScale = 0.9;
+        this.TabGraceNoteScale = 0.8; // matches VF.GraceNote.SCALE, used for grace notes on normal staves
+        this.TabSlursAsBends = true;
+        this.TabSlideStartXShift = 0; // px pulling slide line start point away from the start fret number
+        this.TabSlideEndXShift = 0; // px pulling slide line end point away from the end fret number
 
         // Slur and Tie variables
         this.SlurPlacementFromXML = true;

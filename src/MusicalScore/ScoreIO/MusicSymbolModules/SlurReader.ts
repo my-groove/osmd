@@ -2,6 +2,7 @@
 import { IXmlElement, IXmlAttribute } from "../../../Common/FileIO/Xml";
 import { Slur } from "../../VoiceData/Expressions/ContinuousExpressions/Slur";
 import { Note } from "../../VoiceData/Note";
+import { TabNote } from "../../VoiceData/TabNote";
 import log from "loglevel";
 import { ITextTranslation } from "../../Interfaces/ITextTranslation";
 import { PlacementEnum } from "../../VoiceData/Expressions";
@@ -10,6 +11,10 @@ import { Glissando } from "../../VoiceData/Glissando";
 export class SlurReader {
     private musicSheet: MusicSheet;
     private openSlurDict: { [_: number]: Slur } = {};
+    // maps a synthesized up-bend's target note (the hidden peak note) to the note the bend started from,
+    //   so a subsequent release slur starting at that peak (see addSlur()) can attach its bend to the same
+    //   note as the up-bend instead of to the peak note, letting VexFlowConverter draw one connected curve.
+    private tabBendUpSourceNotes: Map<TabNote, TabNote> = new Map<TabNote, TabNote>();
     constructor(musicSheet: MusicSheet) {
         this.musicSheet = musicSheet;
     }
@@ -71,11 +76,57 @@ export class SlurReader {
                                     delete this.openSlurDict[slurNumber];
                                 } else {
                                     slur.EndNote = currentNote;
-                                    // check if not already a slur with same notes has been given:
-                                    if (!currentNote.isDuplicateSlur(slur)) {
-                                        // if not, link slur to notes:
+                                    const slurStartNote: Note = slur.StartNote;
+                                    if (this.isTabBendExportedAsSlur(slurStartNote, currentNote)) {
+                                        // some exporters (e.g. Sibelius via Dolet) can't export guitar bends as a
+                                        //   proper MusicXML <bend> element and export them as a plain <slur> instead.
+                                        //   treat this as a bend rather than rendering a plain slur curve on the tab staff.
+                                        const startTabNote: TabNote = slurStartNote as TabNote;
+                                        const endTabNote: TabNote = currentNote as TabNote;
+                                        const bendsUp: boolean = endTabNote.FretNumber > startTabNote.FretNumber;
+                                        // if this is a release continuing from a synthesized up-bend (startTabNote is that
+                                        //   bend's hidden peak note), attach it to the note the up-bend itself started from,
+                                        //   so both bend steps end up on one note (see VexFlowConverter.CreateTabNote()),
+                                        //   which draws them as a single connected curve instead of two disjointed ones.
+                                        const bendUpSourceNote: TabNote = this.tabBendUpSourceNotes.get(startTabNote);
+                                        const isRedirectedRelease: boolean = !bendsUp && !!bendUpSourceNote;
+                                        const bendTargetNote: TabNote = isRedirectedRelease ? bendUpSourceNote : startTabNote;
+                                        bendTargetNote.BendArray.push({
+                                            // semitone delta (1 fret = 1 semitone), consistent with the semitone value
+                                            //   a real MusicXML <bend-alter> element would carry (see VoiceGenerator.addSingleNote()).
+                                            bendalter: Math.abs(endTabNote.FretNumber - startTabNote.FretNumber),
+                                            direction: bendsUp ? "up" : "down",
+                                            // endTabNote is where this step visually reaches whether or not it's
+                                            //   redirected: the (hidden) peak note for an up-bend, or the landing
+                                            //   note for a release (e.g. a grace note bending down into its main
+                                            //   note lands on endTabNote just as much as a redirected one does).
+                                            visualTargetNote: endTabNote,
+                                        });
+                                        if (bendsUp) {
+                                            // standard tab notation shows only the starting fret with a bend arrow, not a second
+                                            //   fret number for the target pitch: hide the target note's tab glyph, keeping its
+                                            //   duration (see the PrintObject check in VexFlowTabMeasure.graphicalMeasureCreatedCalculations()).
+                                            //   a release (bend down) is the opposite: the landing fret is shown, not hidden.
+                                            endTabNote.PrintObject = false;
+                                            this.tabBendUpSourceNotes.set(endTabNote, startTabNote);
+                                        } else if (bendUpSourceNote) {
+                                            this.tabBendUpSourceNotes.delete(startTabNote);
+                                        }
+                                        if (startTabNote.ParentVoiceEntry?.IsGrace) {
+                                            // suppress the decorative grace-to-main-note tie (InstrumentReader.ts sets this
+                                            //   from the raw <slur> presence, independently of this reinterpretation):
+                                            //   the bend arrow already visually conveys the connection.
+                                            startTabNote.ParentVoiceEntry.GraceSlur = false;
+                                        }
+                                    } else if (
+                                        !slurStartNote.ParentVoiceEntry?.IsGrace &&
+                                        !currentNote.ParentVoiceEntry?.IsGrace &&
+                                        !currentNote.isDuplicateSlur(slur)
+                                    ) {
+                                        // check if not already a slur with same notes has been given:
+                                        // if not, link slur to notes. (grace notes are excluded: the graphical slur
+                                        //   pipeline doesn't support slurs starting/ending on a grace note, see VoiceGenerator.read())
                                         currentNote.NoteSlurs.push(slur);
-                                        const slurStartNote: Note = slur.StartNote;
                                         slurStartNote.NoteSlurs.push(slur);
                                     }
                                     delete this.openSlurDict[slurNumber];
@@ -89,5 +140,24 @@ export class SlurReader {
             const errorMsg: string = ITextTranslation.translateText("ReaderErrorMessages/SlurError", "Error while reading slur.");
             this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
         }
+    }
+
+    /** Detects the Sibelius/Dolet "guitar bend exported as slur" pattern: a slur linking two tab notes
+     *  on the same string, with a fret difference small enough to plausibly be a bend (not a slide). */
+    private isTabBendExportedAsSlur(startNote: Note, endNote: Note): boolean {
+        if (!this.musicSheet.Rules.TabSlursAsBends || !startNote || !endNote) {
+            return false;
+        }
+        if (!(startNote instanceof TabNote) || !(endNote instanceof TabNote)) {
+            return false;
+        }
+        const startTabNote: TabNote = startNote;
+        const endTabNote: TabNote = endNote;
+        if (startTabNote.StringNumberTab !== endTabNote.StringNumberTab) {
+            return false;
+        }
+        // up to a 2-whole-step bend (4 frets/semitones), the largest commonly used in guitar tab notation.
+        const fretDifference: number = Math.abs(startTabNote.FretNumber - endTabNote.FretNumber);
+        return fretDifference > 0 && fretDifference <= 4;
     }
 }

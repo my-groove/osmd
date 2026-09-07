@@ -20,6 +20,7 @@ export class Notehead {
     /** shape of the note head (normal, square, triangle, etc.) */
     private shape: NoteHeadShape;
     private filled: boolean;
+    private parenthesis: boolean = false;
     /** the [[Note]] this NoteHead belongs to. */
     private sourceNote: Note;
     // note that color is stored in the sourceNote, because note.Notehead is undefined for normal noteheads.
@@ -55,6 +56,15 @@ export class Notehead {
     }
     public get Filled(): boolean {
         return this.filled;
+    }
+
+    /** Whether the notehead should be rendered in parentheses (XML: <notehead parentheses="yes">),
+     *  e.g. for a bend-release landing note that isn't actually re-plucked. */
+    public get Parenthesis(): boolean {
+        return this.parenthesis;
+    }
+    public set Parenthesis(value: boolean) {
+        this.parenthesis = value;
     }
 
     /** Converts xml attribute to NoteHeadShape.
