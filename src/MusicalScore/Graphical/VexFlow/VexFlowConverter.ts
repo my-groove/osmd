@@ -27,7 +27,7 @@ import { EngravingRules } from "../EngravingRules";
 import { Note } from "../../../MusicalScore/VoiceData/Note";
 import StaveNote = VF.StaveNote;
 import { ArpeggioType } from "../../VoiceData/Arpeggio";
-import { TabNote } from "../../VoiceData/TabNote";
+import { TabNote, TabBend } from "../../VoiceData/TabNote";
 import { PlacementEnum } from "../../VoiceData/Expressions/AbstractExpression";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { Slur } from "../../VoiceData/Expressions/ContinuousExpressions/Slur";
@@ -40,6 +40,11 @@ import { Staff } from "../../VoiceData/Staff";
  * from OSMD objects to VexFlow objects.
  */
 export class VexFlowConverter {
+    /** Bridges a synthesized bend's visual target note (see TabBend.visualTargetNote, SlurReader.addSlur()) to
+     *  the phrase entry objects waiting for its VF.TabNote, since that note's own CreateTabNote() call (which
+     *  creates the VF.TabNote) can happen later than the bend step reaching for it. Entries are filled in and
+     *  removed as each target note's tick is processed; see CreateTabNote() below. */
+    private static pendingBendReleaseTargets: Map<TabNote, { targetNote?: VF.TabNote }[]> = new Map<TabNote, { targetNote?: VF.TabNote }[]>();
     /**
      * Mapping from numbers of alterations on the key signature to major keys
      * @type {[alterationsNo: number]: string; }
@@ -980,7 +985,7 @@ export class VexFlowConverter {
     public static CreateTabNote(gve: GraphicalVoiceEntry): VF.TabNote {
         const tabPositions: {str: number, fret: number}[] = [];
         const notes: GraphicalNote[] = gve.notes.reverse();
-        const tabPhrases: { type: number, text: string, width: number }[] = [];
+        const tabBendPhrases: { index: number, phrase: { type: number, text: string, targetNote?: VF.TabNote }[] }[] = [];
         const frac: Fraction = gve.notes[0].graphicalNoteLength;
         const isTuplet: boolean = gve.notes[0].sourceNote.NoteTuplet !== undefined;
         let duration: string = VexFlowConverter.durations(frac, isTuplet)[0];
@@ -1000,24 +1005,68 @@ export class VexFlowConverter {
                 (tabPosition as any).fret = "x";
                 isXNotehead = true;
             }
+            if (!note.sourceNote.PrintObject) {
+                // e.g. the target/sustain note of an up-bend synthesized from a slur (SlurReader.isTabBendExportedAsSlur):
+                //   standard tab notation shows only the starting fret with a bend arrow, not a second fret number.
+                //   blank the glyph text while keeping this a real TabNote, so duration/grace-note-attachment/etc. stay intact.
+                (tabPosition as any).fret = "";
+            } else if (note.sourceNote.Notehead?.Parenthesis) {
+                // e.g. the landing note of a bend release synthesized from a slur: shown, but in parentheses,
+                //   since it's not a new pluck (also used for a real XML <notehead parentheses="yes">).
+                (tabPosition as any).fret = `(${tabPosition.fret})`;
+            }
             tabPositions.push(tabPosition);
-            if (tabNote.BendArray) {
-                tabNote.BendArray.forEach( function( bend: {bendalter: number, direction: string} ): void {
-                    let phraseText: string;
-                    const phraseStep: number = bend.bendalter - tabPosition.fret;
-                    if (phraseStep > 1) {
-                        phraseText = "Full";
-                    } else if (phraseStep === 1) {
-                        phraseText = "1/2";
-                    } else {
-                        phraseText = "1/4";
-                    }
-                    if (bend.direction === "up") {
-                        tabPhrases.push({type: VF.Bend.UP, text: phraseText, width: 10});
-                    } else {
-                        tabPhrases.push({type: VF.Bend.DOWN, text: phraseText, width: 10});
-                    }
-                });
+            if (tabNote.BendArray && tabNote.BendArray.length > 0) {
+                // Combine all bend steps of this note (e.g. bend up, then release) into a single VF.Bend
+                //   phrase, so VexFlow's own draw() chains the curves: each segment continues from where the
+                //   previous one ended, instead of every step re-measuring its own x position from the note.
+                //   Don't use VexFlow's legacy (text, release=true) constructor either, since that always
+                //   fabricates a preceding up-arc, which would be wrong e.g. for a release-only phrase.
+                const notePhrase: { type: number, text: string, targetNote?: VF.TabNote }[] =
+                    tabNote.BendArray.map( function( bend: TabBend ): { type: number, text: string, targetNote?: VF.TabNote } {
+                        // bend.bendalter is a semitone delta (1 fret = 1 semitone), whether it came from a real
+                        //   XML <bend-alter> (VoiceGenerator) or a synthesized slur-as-bend (SlurReader).
+                        const wholeSteps: number = Math.floor(bend.bendalter / 2);
+                        const hasHalfStep: boolean = bend.bendalter % 2 !== 0;
+                        let phraseText: string;
+                        if (wholeSteps === 0) {
+                            phraseText = hasHalfStep ? "1/2" : "1/4";
+                        } else if (wholeSteps === 1 && !hasHalfStep) {
+                            phraseText = "Full";
+                        } else {
+                            phraseText = hasHalfStep ? `${wholeSteps} 1/2` : `${wholeSteps}`;
+                        }
+                        // leave release text blank: standard tab notation doesn't label the release curve
+                        //   (VexFlow's own default release phrase omits text too, see bend.js constructor).
+                        const phraseEntry: { type: number, text: string, targetNote?: VF.TabNote } =
+                            bend.direction === "up" ? {type: VF.Bend.UP, text: phraseText} : {type: VF.Bend.DOWN, text: ""};
+                        if (bend.visualTargetNote) {
+                            // the target note's VF.TabNote may already exist: e.g. a grace note's bend lands on
+                            //   its main note, but VexFlowTabMeasure creates the main note's VF.TabNote first and
+                            //   only afterwards converts the grace notes that precede it (see
+                            //   VexFlowTabMeasure.graphicalMeasureCreatedCalculations()). Use it immediately if so.
+                            const targetGraphicalNote: GraphicalNote | undefined =
+                                rules.NoteToGraphicalNoteMap.getValue(bend.visualTargetNote.NoteToGraphicalNoteObjectId);
+                            const existingTargetNote: VF.TabNote =
+                                (targetGraphicalNote as VexFlowGraphicalNote)?.vfnote?.[0] as VF.TabNote;
+                            if (existingTargetNote) {
+                                phraseEntry.targetNote = existingTargetNote;
+                            } else {
+                                // not created yet (the more common case: the target note's own tick is processed
+                                //   later): register to fill in targetNote once that happens (see the resolve loop
+                                //   below, after each note's own vfnote is created), so VexFlowPatch/src/bend.js
+                                //   draw() can size the curve to actually reach the target note's final x position.
+                                let waiting: { targetNote?: VF.TabNote }[] | undefined = VexFlowConverter.pendingBendReleaseTargets.get(bend.visualTargetNote);
+                                if (!waiting) {
+                                    waiting = [];
+                                    VexFlowConverter.pendingBendReleaseTargets.set(bend.visualTargetNote, waiting);
+                                }
+                                waiting.push(phraseEntry);
+                            }
+                        }
+                        return phraseEntry;
+                    });
+                tabBendPhrases.push({index: tabPositions.length - 1, phrase: notePhrase});
             }
 
             if (tabNote.VibratoStroke) {
@@ -1040,10 +1089,23 @@ export class VexFlowConverter {
             duration: duration,
             positions: tabPositions,
         }, drawStem);
-        if (isXNotehead) {
+        const isGrace: boolean = gve.parentVoiceEntry.IsGrace;
+        if (isXNotehead || isGrace) {
             // (vfnote as any).render_options.fretScale = rules.TabXNoteheadScale; // doesn't work, is overwritten later
-            (vfnote as any).render_options.scale = rules.TabXNoteheadScale; // VexFlowPatch
-            (vfnote as any).render_options.TabUseXNoteheadAlternativeGlyph = rules.TabUseXNoteheadAlternativeGlyph; // VexFlowPatch
+            const scale: number = (isXNotehead ? rules.TabXNoteheadScale : 1.0) * (isGrace ? rules.TabGraceNoteScale : 1.0);
+            (vfnote as any).render_options.scale = scale; // VexFlowPatch
+            if (isXNotehead) {
+                (vfnote as any).render_options.TabUseXNoteheadAlternativeGlyph = rules.TabUseXNoteheadAlternativeGlyph; // VexFlowPatch
+            }
+            if (isGrace) {
+                // multi-digit fret numbers are drawn as text with a fixed pt size (render_options.font),
+                //   not scaled by render_options.scale (see VexFlowPatch/src/tabnote.js drawPositions()/setStave()),
+                //   so we have to shrink the font size itself for grace notes.
+                const font: string = (vfnote as any).render_options.font;
+                const [fontSize, ...fontRest] = font.split(" ");
+                const scaledFontSize: number = parseFloat(fontSize) * rules.TabGraceNoteScale;
+                (vfnote as any).render_options.font = `${scaledFontSize}pt ${fontRest.join(" ")}`;
+            }
             vfnote.updateWidth(); // use .scale, update glyph
         }
         if (rules.UsePageBackgroundColorForTabNotes) {
@@ -1055,12 +1117,24 @@ export class VexFlowConverter {
             (notes[i] as VexFlowGraphicalNote).setIndex(vfnote, i);
         }
 
-        tabPhrases.forEach(function(phrase: { type: number, text: string, width: number }): void {
-            if (phrase.type === VF.Bend.UP) {
-                vfnote.addModifier (new VF.Bend(phrase.text, false));
-            } else {
-                vfnote.addModifier (new VF.Bend(phrase.text, true));
+        // resolve any bend phrase entries (of other, earlier-processed notes) that were waiting for this
+        //   tick's VF.TabNote as their visual target (see the notePhrase.map() above and its comment).
+        for (const note of notes) {
+            const waiting: { targetNote?: VF.TabNote }[] | undefined = VexFlowConverter.pendingBendReleaseTargets.get(note.sourceNote as TabNote);
+            if (waiting) {
+                waiting.forEach((entry: { targetNote?: VF.TabNote }) => { entry.targetNote = vfnote; });
+                VexFlowConverter.pendingBendReleaseTargets.delete(note.sourceNote as TabNote);
             }
+        }
+
+        tabBendPhrases.forEach(function(entry: { index: number, phrase: { type: number, text: string, targetNote?: VF.TabNote }[] }): void {
+            // Don't set a `width` key on any phrase entry (the @types/vexflow phrase type requires one, so cast
+            //   around it): Bend.updateWidth() (vexflow/src/bend.js) only computes `draw_width` (used for the
+            //   actual curve/arrow coordinates) when the `width` key is absent entirely ("'width' in bend");
+            //   with it present (even as undefined), draw_width stays undefined and the curve silently fails
+            //   to render (NaN coordinates).
+            const bend: VF.Bend = new VF.Bend(undefined, undefined, entry.phrase as any);
+            vfnote.addModifier(bend, entry.index);
         });
         if (tabVibrato) {
             vfnote.addModifier(new VF.Vibrato());

@@ -71,6 +71,21 @@ import { VexFlowGlissando } from "./VexFlowGlissando";
 export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
   /** space needed for a dash for lyrics spacing, calculated once */
   private dashSpace: number;
+
+  /** Pushes a tab slide line's start/end points away from their notes (fret numbers) by startXShift/endXShift
+   * respectively, instead of vexflow's render_options.tie_spacing, which shifts both points in the same
+   * direction (moving the line away from the start note but into the end note, or vice versa). */
+  private padTabSlideLineEndpoints(vfTie: any, startXShift: number, endXShift: number): void {
+    if (!startXShift && !endXShift) {
+      return;
+    }
+    const originalRenderTie: (params: any) => void = vfTie.renderTie.bind(vfTie);
+    vfTie.renderTie = (params: any): void => {
+      params.first_x_px += startXShift;
+      params.last_x_px -= endXShift;
+      originalRenderTie(params);
+    };
+  }
   public beamsNeedUpdate: boolean = false;
 
   constructor(rules: EngravingRules) {
@@ -702,6 +717,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               },
               slideDirection
             );
+            this.padTabSlideLineEndpoints(vfTie, this.rules.TabSlideStartXShift, this.rules.TabSlideEndXShift);
           } else {
             vfTie = new VF.TabTie(
               {
@@ -1934,6 +1950,7 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
               },
               slideDirection
             );
+            this.padTabSlideLineEndpoints(vfTie, this.rules.TabSlideStartXShift, this.rules.TabSlideEndXShift);
 
             const startMeasure: VexFlowMeasure = (vfStartNote?.parentVoiceEntry.parentStaffEntry.parentMeasure as VexFlowMeasure);
             if (startMeasure) {

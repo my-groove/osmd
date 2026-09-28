@@ -150,7 +150,7 @@ export class Bend extends Modifier {
 
     const start = this.note.getModifierStartXY(Modifier.Position.RIGHT,
       this.index);
-    start.x += 3;
+    start.x += 6; // adding a small offset to the start position to avoid overlapping with the note head
     start.y += 0.5;
     const x_shift = this.x_shift;
 
@@ -221,6 +221,13 @@ export class Bend extends Modifier {
       last_drawn_width = bend.draw_width +
         (last_bend ? last_bend.draw_width : 0) -
         (i === 1 ? x_shift : 0);
+      // VexflowPatch: a release synthesized to land on a specific note (see VexFlowConverter.CreateTabNote(),
+      //   SlurReader.addSlur()) sizes its curve from that note's actual formatted x position instead of the
+      //   generic text-based width above, so the arrowhead lands on the note regardless of note spacing.
+      const hasTargetNote = bend.targetNote && typeof bend.targetNote.getAbsoluteX === 'function';
+      if (hasTargetNote) {
+        last_drawn_width = bend.targetNote.getAbsoluteX() - start.x - 4;
+      }
       if (bend.type === Bend.UP) {
         if (last_bend && last_bend.type === Bend.UP) {
           renderArrowHead(start.x, bend_height);
@@ -240,7 +247,9 @@ export class Bend extends Modifier {
         }
 
         if (last_bend === null) {
-          last_drawn_width = bend.draw_width;
+          if (!hasTargetNote) {
+            last_drawn_width = bend.draw_width;
+          }
           renderRelease(start.x, start.y, last_drawn_width, bend_height);
         }
       }
