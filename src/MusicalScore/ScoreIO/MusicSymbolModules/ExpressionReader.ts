@@ -5,6 +5,7 @@ import {ContDynamicEnum, ContinuousDynamicExpression} from "../../VoiceData/Expr
 import {ContinuousTempoExpression} from "../../VoiceData/Expressions/ContinuousExpressions/ContinuousTempoExpression";
 import {DynamicEnum, InstantaneousDynamicExpression} from "../../VoiceData/Expressions/InstantaneousDynamicExpression";
 import {OctaveShift} from "../../VoiceData/Expressions/ContinuousExpressions/OctaveShift";
+import {BracketExpression} from "../../VoiceData/Expressions/ContinuousExpressions/BracketExpression";
 import {Instrument} from "../../Instrument";
 import {MultiExpression} from "../../VoiceData/Expressions/MultiExpression";
 import {IXmlAttribute, IXmlElement} from "../../../Common/FileIO/Xml";
@@ -35,6 +36,8 @@ export class ExpressionReader {
     private openContinuousTempoExpression: ContinuousTempoExpression;
     private activeInstantaneousDynamic: InstantaneousDynamicExpression;
     private openOctaveShift: OctaveShift;
+    /** Open <bracket> expressions (e.g. palm muting), by their xml number. */
+    private openBrackets: { [numberXml: number]: BracketExpression } = {};
     private lastWedge: ContinuousDynamicExpression;
     private WedgeYPosXml: number;
     private openPedal: Pedal;
@@ -430,6 +433,68 @@ export class ExpressionReader {
         this.getMultiExpression.PedalEnd = this.openPedal;
         this.openPedal.ParentEndMultiExpression = this.getMultiExpression;
         this.openPedal = undefined;
+    }
+    /** Reads <bracket type="start|stop"> elements of a <direction> (e.g. palm muting "P.M." with dashed line).
+     * @returns true if the direction contains a bracket start with a label (<words>), which is then drawn by the bracket.
+     */
+    public addBracket(directionNode: IXmlElement, currentMeasure: SourceMeasure, endTimestamp: Fraction): boolean {
+        let hasBracketStart: boolean = false;
+        const placement: PlacementEnum = this.readPlacement(directionNode);
+        let bracketStaffNumber: number = this.staffNumber;
+        const staffNode: IXmlElement = directionNode.element("staff");
+        if (staffNode) {
+            const parsedStaff: number = parseInt(staffNode.value, 10);
+            if (!isNaN(parsedStaff)) {
+                bracketStaffNumber = parsedStaff;
+            }
+        }
+        let text: string = "";
+        for (const directionTypeNode of directionNode.elements("direction-type")) {
+            const wordsNode: IXmlElement = directionTypeNode.element("words");
+            if (wordsNode?.value) {
+                text = wordsNode.value.trim();
+            }
+        }
+        for (const directionTypeNode of directionNode.elements("direction-type")) {
+            const bracketNode: IXmlElement = directionTypeNode.element("bracket");
+            if (!bracketNode) {
+                continue;
+            }
+            const type: string = bracketNode.attribute("type")?.value;
+            const numberXml: number = this.readNumber(bracketNode);
+            try {
+                if (type === "start") {
+                    const bracket: BracketExpression = new BracketExpression(numberXml);
+                    bracket.lineType = bracketNode.attribute("line-type")?.value ?? "solid"; // MusicXML default is solid
+                    bracket.lineEnd = bracketNode.attribute("line-end")?.value ?? "none";
+                    bracket.text = text;
+                    bracket.placement = placement;
+                    bracket.staffNumber = bracketStaffNumber;
+                    this.getMultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, numberXml);
+                    this.getMultiExpression.BracketStart = bracket;
+                    bracket.parentStartMultiExpression = this.getMultiExpression;
+                    this.openBrackets[numberXml] = bracket;
+                    hasBracketStart = true;
+                } else if (type === "stop") {
+                    const openBracket: BracketExpression = this.openBrackets[numberXml];
+                    if (openBracket) {
+                        if (bracketNode.attribute("line-end")?.value) {
+                            // the end hook is defined at the stop element in MusicXML
+                            openBracket.lineEnd = bracketNode.attribute("line-end").value;
+                        }
+                        this.getMultiExpression = this.createNewMultiExpressionIfNeeded(currentMeasure, numberXml, endTimestamp);
+                        this.getMultiExpression.BracketEnd = openBracket;
+                        openBracket.parentEndMultiExpression = this.getMultiExpression;
+                        delete this.openBrackets[numberXml];
+                    }
+                }
+            } catch (ex) {
+                const errorMsg: string = ITextTranslation.translateText("ReaderErrorMessages/BracketError", "Error while reading bracket.");
+                this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
+                log.debug("ExpressionReader.addBracket", errorMsg, ex);
+            }
+        }
+        return hasBracketStart && text !== "";
     }
     private initialize(): void {
         this.placement = PlacementEnum.NotYetDefined;

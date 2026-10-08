@@ -3,6 +3,7 @@ import {Fraction} from "../../../Common/DataObjects/Fraction";
 import {InstantaneousDynamicExpression} from "./InstantaneousDynamicExpression";
 import {ContinuousDynamicExpression} from "./ContinuousExpressions/ContinuousDynamicExpression";
 import {OctaveShift} from "./ContinuousExpressions/OctaveShift";
+import {BracketExpression} from "./ContinuousExpressions/BracketExpression";
 import {MoodExpression} from "./MoodExpression";
 import {UnknownExpression} from "./UnknownExpression";
 import {AbstractExpression} from "./AbstractExpression";
@@ -32,6 +33,8 @@ export class MultiExpression {
     private combinedExpressionsText: string;
     private octaveShiftStart: OctaveShift;
     private octaveShiftEnd: OctaveShift;
+    private bracketStart: BracketExpression;
+    private bracketEnd: BracketExpression;
     public PedalStart: Pedal;
     public PedalEnd: Pedal;
 
@@ -94,6 +97,18 @@ export class MultiExpression {
     }
     public set OctaveShiftEnd(value: OctaveShift) {
         this.octaveShiftEnd = value;
+    }
+    public get BracketStart(): BracketExpression {
+        return this.bracketStart;
+    }
+    public set BracketStart(value: BracketExpression) {
+        this.bracketStart = value;
+    }
+    public get BracketEnd(): BracketExpression {
+        return this.bracketEnd;
+    }
+    public set BracketEnd(value: BracketExpression) {
+        this.bracketEnd = value;
     }
     public get CombinedExpressionsText(): string {
         return this.combinedExpressionsText;

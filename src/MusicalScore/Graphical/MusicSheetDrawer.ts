@@ -388,6 +388,7 @@ export abstract class MusicSheetDrawer {
             }
         }
         this.drawOctaveShifts(staffLine);
+        this.drawBrackets(staffLine);
 
         this.drawPedals(staffLine);
 
@@ -450,6 +451,10 @@ export abstract class MusicSheetDrawer {
     // }
 
     protected drawOctaveShifts(staffLine: StaffLine): void {
+        return;
+    }
+
+    protected drawBrackets(staffLine: StaffLine): void {
         return;
     }
 

@@ -465,10 +465,19 @@ export class InstrumentReader {
               expressionReader.addPedalMarking(xmlNode, this.currentMeasure, currentFraction.clone());
               // pedal end in OSMD and Vexflow means end BEFORE timestamp, so currentFraction instead of previousFraction needs to be used.
              }
+             let bracketStartHasLabel: boolean = false;
+             if (xmlNode.elements("direction-type").some(directionType => directionType.element("bracket"))) {
+               expressionReader.readExpressionParameters(
+                 xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
+               );
+               bracketStartHasLabel = expressionReader.addBracket(xmlNode, this.currentMeasure, previousFraction.clone());
+             }
              expressionReader.readExpressionParameters(
                xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
              );
-             expressionReader.read(xmlNode, this.currentMeasure, currentFraction, previousFraction.clone());
+             if (!bracketStartHasLabel) { // otherwise the <words> are drawn as label of the bracket
+               expressionReader.read(xmlNode, this.currentMeasure, currentFraction, previousFraction.clone());
+             }
            }
           }
         } else if (xmlNode.name === "barline") {

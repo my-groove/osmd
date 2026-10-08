@@ -12,6 +12,7 @@ import { GraphicalLayers } from "../DrawingEnums";
 import { GraphicalStaffEntry } from "../GraphicalStaffEntry";
 import { VexFlowBackend } from "./VexFlowBackend";
 import { VexFlowOctaveShift } from "./VexFlowOctaveShift";
+import { VexFlowBracket } from "./VexFlowBracket";
 import { VexFlowInstantaneousDynamicExpression } from "./VexFlowInstantaneousDynamicExpression";
 import { VexFlowInstrumentBracket } from "./VexFlowInstrumentBracket";
 import { VexFlowInstrumentBrace } from "./VexFlowInstrumentBrace";
@@ -508,6 +509,25 @@ export class VexFlowMusicSheetDrawer extends MusicSheetDrawer {
                 } catch (ex) {
                     log.warn(ex);
                 }
+            }
+        }
+    }
+
+    protected drawBrackets(staffLine: StaffLine): void {
+        for (const graphicalBracket of staffLine.Brackets) {
+            const vexFlowBracket: VexFlowBracket = graphicalBracket as VexFlowBracket;
+            if (!vexFlowBracket?.startNote || !vexFlowBracket.endNote) {
+                continue;
+            }
+            const textBracket: VF.TextBracket = vexFlowBracket.getTextBracket();
+            if (this.rules.DefaultColorMusic) {
+                (textBracket as any).render_options.color = this.rules.DefaultColorMusic;
+            }
+            textBracket.setContext(this.backend.getContext());
+            try {
+                textBracket.draw();
+            } catch (ex) {
+                log.warn(ex);
             }
         }
     }

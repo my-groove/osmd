@@ -14,6 +14,7 @@ import { GraphicalOctaveShift } from "./GraphicalOctaveShift";
 import { GraphicalSlur } from "./GraphicalSlur";
 import { AbstractGraphicalExpression } from "./AbstractGraphicalExpression";
 import { GraphicalPedal } from "./GraphicalPedal";
+import { GraphicalBracket } from "./GraphicalBracket";
 import { GraphicalGlissando } from "./GraphicalGlissando";
 
 /**
@@ -173,6 +174,9 @@ export abstract class StaffLine extends GraphicalObject {
     }
 
     public Pedals: GraphicalPedal[] = [];
+
+    /** Brackets (e.g. palm muting) drawn on this staffline. */
+    public Brackets: GraphicalBracket[] = [];
 
     public get StaffHeight(): number {
         return this.staffHeight;

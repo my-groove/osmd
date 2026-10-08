@@ -741,6 +741,14 @@ export abstract class MusicSheetCalculator {
         measureIndex: number, staffIndex: number): void;
 
     /**
+     * Calculate a single bracket (e.g. palm muting) for a [[MultiExpression]].
+     */
+    protected calculateSingleBracket(sourceMeasure: SourceMeasure, multiExpression: MultiExpression,
+                                     measureIndex: number, staffIndex: number): void {
+        throw new Error(this.abstractNotImplementedErrorMessage);
+    }
+
+    /**
      * Calculate all the textual [[RepetitionInstruction]]s (e.g. dal segno) for a single [[SourceMeasure]].
      * @param repetitionInstruction
      * @param measureIndex
@@ -966,6 +974,8 @@ export abstract class MusicSheetCalculator {
                 // calculate all Pedal Expressions
                 this.calculatePedals();
             }
+            // calculate all brackets (e.g. palm muting)
+            this.calculateBrackets();
             // calcualte RepetitionInstructions (Dal Segno, Coda, etc)
             this.calculateWordRepetitionInstructions();
         }
@@ -3652,6 +3662,24 @@ export abstract class MusicSheetCalculator {
                     for (let k: number = 0; k < sourceMeasure.StaffLinkedExpressions[j].length; k++) {
                         if ((sourceMeasure.StaffLinkedExpressions[j][k].PedalStart)) {
                             this.calculateSinglePedal(sourceMeasure, sourceMeasure.StaffLinkedExpressions[j][k], i, j);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private calculateBrackets(): void {
+        for (let i: number = 0; i < this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures.length; i++) {
+            const sourceMeasure: SourceMeasure = this.graphicalMusicSheet.ParentMusicSheet.SourceMeasures[i];
+            for (let j: number = 0; j < sourceMeasure.StaffLinkedExpressions.length; j++) {
+                if (!this.graphicalMusicSheet.MeasureList[i] || !this.graphicalMusicSheet.MeasureList[i][j]) {
+                    continue;
+                }
+                if (this.graphicalMusicSheet.MeasureList[i][j].ParentStaff.ParentInstrument.Visible) {
+                    for (const multiExpression of sourceMeasure.StaffLinkedExpressions[j]) {
+                        if (multiExpression.BracketStart) {
+                            this.calculateSingleBracket(sourceMeasure, multiExpression, i, j);
                         }
                     }
                 }

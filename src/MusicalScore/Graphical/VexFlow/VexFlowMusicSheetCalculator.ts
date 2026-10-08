@@ -33,6 +33,8 @@ import { LyricsEntry } from "../../VoiceData/Lyrics/LyricsEntry";
 import { GraphicalLyricWord } from "../GraphicalLyricWord";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
 import { VexFlowOctaveShift } from "./VexFlowOctaveShift";
+import { VexFlowBracket } from "./VexFlowBracket";
+import { BracketExpression } from "../../VoiceData/Expressions/ContinuousExpressions/BracketExpression";
 import { VexFlowInstantaneousDynamicExpression } from "./VexFlowInstantaneousDynamicExpression";
 import { Slur } from "../../VoiceData/Expressions/ContinuousExpressions/Slur";
 /* VexFlow Version - for later use
@@ -1430,6 +1432,99 @@ export class VexFlowMusicSheetCalculator extends MusicSheetCalculator {
           }
         }
       }
+  }
+
+  /**
+   * Calculate a single bracket (e.g. palm muting "P.M.") for a [[MultiExpression]].
+   * A bracket spanning several systems is split into one part per staffline.
+   */
+  protected calculateSingleBracket(sourceMeasure: SourceMeasure, multiExpression: MultiExpression, measureIndex: number, staffIndex: number): void {
+    const bracket: BracketExpression = multiExpression.BracketStart;
+    const startMeasure: GraphicalMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
+      bracket.parentStartMultiExpression.SourceMeasureParent, staffIndex);
+    let endMeasure: GraphicalMeasure;
+    if (bracket.parentEndMultiExpression) {
+      endMeasure = this.graphicalMusicSheet.getGraphicalMeasureFromSourceMeasureAndIndex(
+        bracket.parentEndMultiExpression.SourceMeasureParent, staffIndex);
+    } else { // no stop given in xml: draw until the end of the last rendered measure
+      endMeasure = this.graphicalMusicSheet.getLastGraphicalMeasureFromIndex(staffIndex, true);
+    }
+    const startStaffLine: StaffLine = startMeasure?.ParentStaffLine;
+    const endStaffLine: StaffLine = endMeasure?.ParentStaffLine;
+    if (!startStaffLine || !endStaffLine) {
+      return; // bracket starts or ends outside of the rendered measures
+    }
+
+    let startStaffEntry: GraphicalStaffEntry = startMeasure.findGraphicalStaffEntryFromTimestamp(bracket.parentStartMultiExpression.Timestamp);
+    if (!startStaffEntry) {
+      startStaffEntry = startMeasure.staffEntries.find(staffEntry => !!staffEntry);
+    }
+    let endStaffEntry: GraphicalStaffEntry = bracket.parentEndMultiExpression ?
+      endMeasure.findGraphicalStaffEntryFromTimestamp(bracket.parentEndMultiExpression.Timestamp) : undefined;
+    if (!endStaffEntry) {
+      endStaffEntry = endMeasure.staffEntries.slice().reverse().find(staffEntry => !!staffEntry);
+    }
+
+    const startSystemId: number = startStaffLine.ParentMusicSystem.Id;
+    const endSystemId: number = endStaffLine.ParentMusicSystem.Id;
+    for (let systemId: number = startSystemId; systemId <= endSystemId; systemId++) {
+      const staffLine: StaffLine = systemId === startSystemId ? startStaffLine : this.musicSystems[systemId]?.StaffLines[staffIndex];
+      if (!staffLine) {
+        continue;
+      }
+      let firstEntry: GraphicalStaffEntry = startStaffEntry;
+      if (systemId !== startSystemId) {
+        firstEntry = staffLine.Measures[0]?.staffEntries.find(staffEntry => !!staffEntry);
+      }
+      let lastEntry: GraphicalStaffEntry = endStaffEntry;
+      if (systemId !== endSystemId) {
+        const lastMeasures: GraphicalMeasure[] = staffLine.Measures.filter(measure => !measure.IsExtraGraphicalMeasure);
+        const lastMeasure: GraphicalMeasure = lastMeasures[lastMeasures.length - 1];
+        lastEntry = lastMeasure?.staffEntries.slice().reverse().find(staffEntry => !!staffEntry);
+      }
+      if (!firstEntry || !lastEntry) {
+        log.debug("VexFlowMusicSheetCalculator.calculateSingleBracket: no start or end staff entry found, bracket not drawn");
+        continue;
+      }
+      const graphicalBracket: VexFlowBracket = new VexFlowBracket(bracket, staffLine.PositionAndShape);
+      graphicalBracket.isContinuation = systemId !== startSystemId;
+      graphicalBracket.endsOnDifferentStaffLine = systemId !== endSystemId;
+      if (!graphicalBracket.setStartNote(firstEntry) || !graphicalBracket.setEndNote(lastEntry)) {
+        continue; // e.g. only rests, no vexflow note to attach to
+      }
+      this.calculateBracketSkyBottomLine(firstEntry, lastEntry, graphicalBracket, staffLine);
+      staffLine.Brackets.push(graphicalBracket);
+    }
+  }
+
+  /** Reserve space above/below the staffline for the bracket. See [[calculateOctaveShiftSkyBottomLine]]. */
+  private calculateBracketSkyBottomLine(startStaffEntry: GraphicalStaffEntry, endStaffEntry: GraphicalStaffEntry,
+                                        vfBracket: VexFlowBracket, parentStaffline: StaffLine): void {
+    let startX: number = startStaffEntry.PositionAndShape.AbsolutePosition.x - startStaffEntry.PositionAndShape.Size.width / 2;
+    let stopX: number = endStaffEntry.PositionAndShape.AbsolutePosition.x + endStaffEntry.PositionAndShape.Size.width / 2;
+    if (startX > stopX) { // start after end would lead to an error in the skybottomline, see octave shift (#1281)
+      const oldStartX: number = startX;
+      startX = stopX;
+      stopX = oldStartX;
+    }
+    vfBracket.PositionAndShape.Size.width = stopX - startX;
+    const textBracket: Vex.Flow.TextBracket = vfBracket.getTextBracket();
+    const fontSize: number = (textBracket as any).font.size / 10;
+    if (vfBracket.position === Vex.Flow.TextBracket.Positions.TOP) {
+      const headroom: number = Math.ceil(parentStaffline.SkyBottomLineCalculator.getSkyLineMinInRange(startX, stopX));
+      if (headroom === Infinity) { // would cause a Vexflow error
+        return;
+      }
+      (textBracket.start.getStave().options as any).top_text_position = Math.abs(headroom);
+      parentStaffline.SkyBottomLineCalculator.updateSkyLineInRange(startX, stopX, headroom - fontSize * 2);
+    } else {
+      const footroom: number = parentStaffline.SkyBottomLineCalculator.getBottomLineMaxInRange(startX, stopX);
+      if (footroom === Infinity) {
+        return;
+      }
+      (textBracket.start.getStave().options as any).bottom_text_position = footroom;
+      parentStaffline.SkyBottomLineCalculator.updateBottomLineInRange(startX, stopX, footroom + fontSize * 1.5);
+    }
   }
 
   private calculateOctaveShiftSkyBottomLine(startStaffEntry: GraphicalStaffEntry, endStaffEntry: GraphicalStaffEntry,
