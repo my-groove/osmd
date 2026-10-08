@@ -22,6 +22,28 @@ describe("OpenSheetMusicDisplay Main Export", () => {
         done();
     });
 
+    it("reads staff-tuning of a tab staff", () => {
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const osmd: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const xml: string = `<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Guitar</part-name></score-part></part-list>
+<part id="P1"><measure number="1"><attributes><divisions>1</divisions><clef><sign>TAB</sign><line>5</line></clef>
+<staff-details><staff-lines>6</staff-lines>
+<staff-tuning line="1"><tuning-step>D</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
+<staff-tuning line="2"><tuning-step>A</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>
+<staff-tuning line="3"><tuning-step>D</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+<staff-tuning line="4"><tuning-step>G</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+<staff-tuning line="5"><tuning-step>B</tuning-step><tuning-octave>3</tuning-octave></staff-tuning>
+<staff-tuning line="6"><tuning-step>E</tuning-step><tuning-alter>-1</tuning-alter><tuning-octave>4</tuning-octave></staff-tuning>
+</staff-details></attributes>
+<note><rest/><duration>4</duration><voice>1</voice></note></measure></part></score-partwise>`;
+        return osmd.load(xml).then(() => {
+            const tuning: any[] = osmd.Sheet.Instruments[0].Staves[0].Tuning;
+            chai.expect(tuning.map(t => t.step + t.octave)).to.deep.equal(["D2", "A2", "D3", "G3", "B3", "E4"]);
+            chai.expect(tuning[5].alter).to.equal(-1);
+        });
+    });
+
     it("multiple instances", () => {
         const musicSheetFragmentContainer: HTMLElement = TestUtils.getDivElement(document);
         const fullMusicSheetContainer: HTMLElement = TestUtils.getDivElement(document);

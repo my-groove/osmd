@@ -1,7 +1,7 @@
 import {Instrument} from "../Instrument";
 import {MusicSheet} from "../MusicSheet";
 import {VoiceGenerator} from "./VoiceGenerator";
-import {Staff} from "../VoiceData/Staff";
+import {Staff, StaffTuningNote} from "../VoiceData/Staff";
 import {SourceMeasure} from "../VoiceData/SourceMeasure";
 import {SourceStaffEntry} from "../VoiceData/SourceStaffEntry";
 import {ClefInstruction} from "../VoiceData/Instructions/ClefInstruction";
@@ -210,14 +210,32 @@ export class InstrumentReader {
           }
           const staffDetailsNodes: IXmlElement[] = xmlNode.elements("staff-details"); // there can be multiple, even if redundant. see #1041
           for (const staffDetailsNode of staffDetailsNodes) {
+            let staffNumber: number = 1;
+            const staffNumberAttr: Attr = staffDetailsNode.attribute("number");
+            if (staffNumberAttr) {
+              staffNumber = parseInt(staffNumberAttr.value, 10);
+            }
+            const detailsStaff: Staff = this.instrument.Staves[staffNumber - 1];
             const staffLinesNode: IXmlElement = staffDetailsNode.element("staff-lines");
             if (staffLinesNode) {
-              let staffNumber: number = 1;
-              const staffNumberAttr: Attr = staffDetailsNode.attribute("number");
-              if (staffNumberAttr) {
-                staffNumber = parseInt(staffNumberAttr.value, 10);
+              detailsStaff.StafflineCount = parseInt(staffLinesNode.value, 10);
+            }
+            const tuningNodes: IXmlElement[] = staffDetailsNode.elements("staff-tuning");
+            if (detailsStaff && tuningNodes.length > 0) {
+              const tuning: StaffTuningNote[] = [];
+              for (const tuningNode of tuningNodes) {
+                const line: number = parseInt(tuningNode.attribute("line")?.value, 10);
+                const step: string = tuningNode.element("tuning-step")?.value?.trim();
+                const octave: number = parseInt(tuningNode.element("tuning-octave")?.value, 10);
+                const alter: number = parseFloat(tuningNode.element("tuning-alter")?.value ?? "0");
+                if (isNaN(line) || line < 1 || !step || isNaN(octave)) {
+                  continue;
+                }
+                tuning[line - 1] = { step: step, alter: isNaN(alter) ? 0 : alter, octave: octave };
               }
-              this.instrument.Staves[staffNumber - 1].StafflineCount = parseInt(staffLinesNode.value, 10);
+              if (tuning.length > 0) {
+                detailsStaff.Tuning = tuning;
+              }
             }
           }
           // check multi measure rest

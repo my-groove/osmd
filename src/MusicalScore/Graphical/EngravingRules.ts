@@ -215,6 +215,12 @@ export class EngravingRules {
     public TabTupletYOffsetTop: number;
     public TabTupletYOffsetEffects: number;
     public TabBeamsRendered: boolean;
+    /** Whether to render the open string note names (from MusicXML staff-tuning) left of the tab lines at the start of each system. */
+    public TabTuningRendered: boolean;
+    /** Font size in pixels of the tuning note names. */
+    public TabTuningFontSize: number;
+    /** Gap in pixels between the tuning note names and the left edge of the tab lines (positive = further left, away from the bar). */
+    public TabTuningPaddingRight: number;
     public TabKeySignatureRendered: boolean;
     /** Whether space should be reserved as if there was a key signature.
      * False basically only works for tab-only scores, as it prevents vertical x-alignment with other staves.
@@ -736,6 +742,9 @@ export class EngravingRules {
         this.TabTupletYOffsetEffects = 1.5;
         this.TabTupletsBracketed = true;
         this.TabBeamsRendered = false;
+        this.TabTuningRendered = true;
+        this.TabTuningFontSize = 11;
+        this.TabTuningPaddingRight = 15;
         this.TabKeySignatureRendered = false; // standard not to render for tab scores
         this.TabKeySignatureSpacingAdded = true; // false only works for tab-only scores, as it will prevent vertical x-alignment.
         this.TabTimeSignatureRendered = true; // standard not to render for tab scores

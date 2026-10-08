@@ -2,6 +2,14 @@ import {Voice} from "./Voice";
 import {Instrument} from "../Instrument";
 import { Tie } from "./Tie";
 
+export interface StaffTuningNote {
+    /** Note letter, "A" to "G" */
+    step: string;
+    /** Semitone alteration, e.g. -1 for flat, 1 for sharp */
+    alter: number;
+    octave: number;
+}
+
 export class Staff {
 
     constructor(parentInstrument: Instrument, instrumentStaffId: number) {
@@ -23,6 +31,11 @@ export class Staff {
     private stafflineCount: number = 5;
     public hasLyrics: boolean = false;
     public openTieDict: { [_: number]: Tie } = {};
+
+    /** Open string tuning of a tab staff, from <staff-tuning>. Index = MusicXML line - 1, so index 0 is the lowest string (bottom line).
+     * Undefined if no tuning was encoded.
+     */
+    public Tuning: StaffTuningNote[];
 
     public get ParentInstrument(): Instrument {
         return this.parentInstrument;

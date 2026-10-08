@@ -1,6 +1,6 @@
 import Vex from "vexflow";
 import VF = Vex.Flow;
-import { Staff } from "../../VoiceData/Staff";
+import { Staff, StaffTuningNote } from "../../VoiceData/Staff";
 import { SourceMeasure } from "../../VoiceData/SourceMeasure";
 import { VexFlowMeasure } from "./VexFlowMeasure";
 import { VexFlowStaffEntry } from "./VexFlowStaffEntry";
@@ -12,6 +12,46 @@ import { Arpeggio } from "../../VoiceData/Arpeggio";
 import { Voice } from "../../VoiceData/Voice";
 import log from "loglevel";
 import { ClefEnum, ClefInstruction } from "../../VoiceData/Instructions/ClefInstruction";
+
+/** Stave modifier that draws the open string note names (tuning) outside the bar, in the left margin of the tab lines.
+ * It has no width, so the layout inside the bar is unaffected. The space left of the stave is the system labels margin.
+ */
+class TuningModifier extends VF.StaveModifier {
+    private labels: string[]; // top line first
+    private fontSize: number;
+
+    constructor(labels: string[], fontSize: number, private paddingRight: number, private color: string) {
+        super();
+        this.labels = labels;
+        this.fontSize = fontSize;
+        (this as any).setPosition(VF.StaveModifier.Position.BEGIN);
+        (this as any).setWidth(0);
+        (this as any).setPadding(0);
+    }
+
+    public getCategory(): string {
+        return "barlines"; // sorts directly after the begin barline, i.e. before the tab clef
+    }
+
+    /** VexFlow's Stave.formatBegModifiers() assumes every "barlines" category modifier has a getType() (Barline.type). */
+    public getType(): number {
+        return -1;
+    }
+
+    public draw(): void {
+        const stave: any = (this as any).getStave();
+        const ctx: any = stave.getContext();
+        ctx.save();
+        ctx.setFont("Arial", this.fontSize * 0.75, ""); // VexFlow SVG context font size is in pt, fontSize is in px
+        ctx.setFillStyle(this.color);
+        const rightX: number = stave.getX() - this.paddingRight; // gap between the letters and the bar
+        for (let i: number = 0; i < this.labels.length; i++) {
+            const textWidth: number = this.labels[i].length * this.fontSize * 0.6; // approximation, right-aligns the labels
+            ctx.fillText(this.labels[i], rightX - textWidth, stave.getYForLine(i) + this.fontSize * 0.35);
+        }
+        ctx.restore();
+    }
+}
 
 export class VexFlowTabMeasure extends VexFlowMeasure {
     private multiRestElement: any; // VexFlow: Element
@@ -183,8 +223,25 @@ export class VexFlowTabMeasure extends VexFlowMeasure {
         // this.createOrnaments();
     }
 
+     private addTuningAtBegin(): void {
+        const tuning: StaffTuningNote[] = this.ParentStaff.Tuning;
+        const numLines: number = this.ParentStaff.StafflineCount;
+        if (!this.rules.RenderClefsAtBeginningOfStaffline || !this.rules.TabTuningRendered ||
+            !tuning || tuning.length !== numLines || tuning.includes(undefined)) {
+            return;
+        }
+        const labels: string[] = [];
+        for (let line: number = numLines - 1; line >= 0; line--) { // VexFlow line 0 = top = highest string = last MusicXML line
+            const t: StaffTuningNote = tuning[line];
+            labels.push(t.step + (t.alter > 0 ? "#" : t.alter < 0 ? "b" : ""));
+        }
+        this.stave.addModifier(new TuningModifier(labels, this.rules.TabTuningFontSize, this.rules.TabTuningPaddingRight,
+            this.rules.DefaultColorMusic) as any, VF.StaveModifier.Position.BEGIN);
+     }
+
      public addClefAtBegin(clef: ClefInstruction): void {
         if (clef.ClefType === ClefEnum.TAB) {
+            this.addTuningAtBegin();
             super.addClefAtBegin(clef);
         }
         // else return; // we don't need clefs in tabs.
